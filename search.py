@@ -2,8 +2,11 @@ from __future__ import print_function
 from pulse_sequence import PulseSequence, motional_states_needed
 from functional import *
 from itertools import *
+import time
 import operator
 import random
+
+start = time.clock()
 
 ns = 6
 max_superposition = 5
@@ -98,3 +101,5 @@ for i, target in enumerate(targets):
                 print("-- Angles: ", ", ".join(map(str, g.next())), file = out)
         else:
             print("- Failure: ", ", ".join(colours), file = err)
+
+print("Time elapsed: ", time.clock() - start)
