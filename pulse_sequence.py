@@ -325,8 +325,16 @@ class PulseSequence(object):
         beginning of the pulse sequence.  These will be equally populated, and
         in the same phase as each other.  For example, `[0, 2, 3]` corresponds
         to a start state `(|g0> + |g2> + |g3>)/sqrt(3)`.
+
+    use_cache (optional, True): boolean --
+        Whether to cache all the calculation results for all angles.  If `True`,
+        calling `this.U` or other calculation functions will store the results,
+        so they won't need to be recalculated if you use a different set of
+        angles, then come back.  If this is `False`, then only the most recent
+        set of angles will be stored---this is preferable for optimisation runs,
+        particularly with superpositions of large n.
     """
-    def __init__(this, colours, target = None, start = [0]):
+    def __init__(this, colours, target = None, start = [0], use_cache = True):
         this._cache = {}
         this._colours = colours
         this._ns = max(motional_states_needed(colours),
@@ -334,6 +342,10 @@ class PulseSequence(object):
         this._target = make_ground_state(target, this._ns)\
                        if target is not None else None
         this._start = make_ground_state(start, this._ns)
+        this._use_cache = use_cache
+
+    def _clear_cache(this):
+        this._cache = {}
 
     @property
     def start(this):
@@ -350,7 +362,7 @@ class PulseSequence(object):
     @target.setter
     def target(this, new_target):
         if not np.array_equal(this._target, new_target):
-            this._cache = {}
+            this._clear_cache()
             this._target = new_target
 
     def _calculate_all(this, angles):
@@ -375,6 +387,12 @@ class PulseSequence(object):
             .format(len(this._colours), len(angles))
         angles_ = tuple(angles)
         if angles_ not in this._cache:
+            # if we're not using the cache in general, clear out the old data
+            if not this._use_cache:
+                this._clear_cache()
+            # we still store in the cache so calls to U, d_U, distance and
+            # d_distance don't force recalculation if we're doing them with the
+            # same angles - we still get the economy of calculating all at once
             this._calculate_all(angles_)
         return this._cache[angles_][key]
 
