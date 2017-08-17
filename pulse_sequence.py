@@ -314,7 +314,7 @@ class PulseSequence(object):
         then the carrier will be applied first, then the blue, then the red,
         similar to how we'd write them in operator notation.
 
-    target: 1D list of unsigned int --
+    target (optional, None): 1D list of unsigned int --
         The motional levels that should be populated in the ground state after
         the pulse sequence is completed.  These will be equally populated, and
         in the same phase as each other.  For example, `[0, 2, 3]` corresponds
@@ -326,14 +326,13 @@ class PulseSequence(object):
         in the same phase as each other.  For example, `[0, 2, 3]` corresponds
         to a start state `(|g0> + |g2> + |g3>)/sqrt(3)`.
     """
-    def __init__(this, colours, target, start = [0]):
+    def __init__(this, colours, target = None, start = [0]):
         this._cache = {}
         this._colours = colours
         this._ns = max(motional_states_needed(colours),
                        max(target) + 1, max(start) + 1)
-        assert len(target) > 0 and len(start) > 0,\
-            "There must be at least one populated motional state."
-        this._target = make_ground_state(target, this._ns)
+        this._target = make_ground_state(target, this._ns)\
+                       if target is not None else None
         this._start = make_ground_state(start, this._ns)
 
     @property
@@ -357,13 +356,18 @@ class PulseSequence(object):
     def _calculate_all(this, angles):
         prop, d_prop =\
                 propagator_and_derivatives(zip(this._colours, angles), this._ns)
-        dist, d_dist =\
-                distance_and_derivatives(this.start, this.target, prop, d_prop)
-        this._cache[angles] = {
-            "propagator" : prop,
-            "propagator derivatives" : d_prop,
-            "distance" : dist,
-            "distance derivatives" : d_dist }
+        if this.target is not None:
+            dist, d_dist = distance_and_derivatives(this.start, this.target,
+                                                    prop, d_prop)
+            this._cache[angles] = {
+                "propagator" : prop,
+                "propagator derivatives" : d_prop,
+                "distance" : dist,
+                "distance derivatives" : d_dist }
+        else:
+            this._cache[angles] = {
+                "propagator" : prop,
+                "propagator derivatives" : d_prop }
 
     def _lookup_or_calculate(this, angles, key):
         assert len(angles) == len(this._colours),\
@@ -393,6 +397,8 @@ class PulseSequence(object):
         Get the distance of the pulse sequence stored in the class with the
         specified angles.
         """
+        assert this.target is not None,\
+            "You must set the target state to calculate the distance."
         return this._lookup_or_calculate(angles, "distance")
 
     def d_distance(this, angles):
@@ -400,9 +406,13 @@ class PulseSequence(object):
         Get the derivatives of the distance of the pulse sequence stored in the
         class with the specified angles.
         """
+        assert this.target is not None,\
+            "You must set the target state to calculate the distance."
         return this._lookup_or_calculate(angles, "distance derivatives")
 
     def optimise(this, initial_angles):
+        assert this.target is not None,\
+            "You must set the target state to optimise a pulse sequence."
         return scipy.optimize.minimize(this.distance, initial_angles,
                                        jac = this.d_distance,
                                        method = 'BFGS')
