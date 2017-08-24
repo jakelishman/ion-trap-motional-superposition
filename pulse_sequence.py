@@ -44,7 +44,7 @@ def inner_product(final, operator, start):
     Calculates the quantity <final|operator|start>, assuming that both final and
     start are given as kets, represented by 1D numpy.arrays of complex.
     """
-    return np.dot(adj(final), np.dot(operator, start))
+    return np.linalg.multi_dot([adj(final), operator, start])
 
 
 # Building blocks of linear operators for sideband transitions
@@ -152,121 +152,14 @@ def d_b_el(angle, row, col, ns):
     else:
         return 0.0
 
-def build_matrix(gen, angle, ns):
+def update_matrix(matrix, gen, angle, ns):
     """
     Internal function.
     Build a matrix at the specified angle using the given generator function.
     """
-    return np.array([
-        [ gen(pi * angle, row, col, ns) for col in xrange(2 * ns) ]
-        for row in xrange(2 * ns) ])
-
-def prop_generator(colour, ns = 10):
-    """
-    Return a function generating a matrix for the propagator of the specified
-    colour.  This must be one of 'c', 'r' or 'b', for carrier, red and blue
-    respectively.
-    """
-    return lambda angle:\
-        build_matrix({'c':c_el, 'r':r_el, 'b':b_el}[colour], angle, ns)
-
-def deriv_generator(colour, ns = 10):
-    """
-    Return a function generating a matrix of the derivative of a propagator of
-    the specified colour.  The colour must be one of 'c', 'r' or 'b', for
-    carrier, red or blue respectively.
-    """
-    return lambda angle:\
-        build_matrix({'c':d_c_el, 'r':d_r_el, 'b':d_b_el}[colour], angle, ns)
-
-def multi_propagator(colours, ns = 10):
-    """
-    Return a function which takes a list of angles, and returns the matrix-form
-    propagator which corresponds to a series of propagators at the given angles.
-    The input list to this function is
-        [ colour_1, colour_2, ..., colour_n ],
-    and the input list to the output funciton is
-        [ angle_1, angle_2, ..., angle_n ]
-    which corresponds to the operator
-        U_1(pi * angle_1) . U_2(pi * angle_2) ... U_n(pi * angle_n),
-    i.e. the last element of the list is the operator applied first.
-
-    The colours must each be one of 'c', 'r' or 'b', which correspond to the
-    carrier, red and blue sidebands respectively.
-    """
-    return reduce(np.dot, map(lambda tup: prop_generator(*tup, ns = ns), lst))
-
-def propagator_and_derivatives(pulses, ns = 10):
-    """
-    Efficient method of calculating the complete propagator, and all the
-    derivatives associated with it.
-
-    Arguments:
-    pulses: 1D list of (colour * angle) --
-        colour: 'c' | 'r' | 'b' --
-            The colour of the pulse to be applied, 'c' is the carrier, 'r' is
-            the first red sideband and 'b' is the first blue sideband.
-
-        angle: double --
-            The angle of specified pulse divided by pi, e.g. `angle = 0.5`
-            corresponds to the pulse being applied for an angle of `pi / 2`.
-
-        A list of the pulses to apply, at the given colour and angle.
-
-    ns: unsigned --
-        The number of motional states to consider when building the matrices.
-        Note this is not the maximum motional state - the max will be |ns - 1>.
-
-    Returns:
-    propagator: 2D complex numpy.array --
-        The full propagator for the chain of operators, identical to calling
-        `multi_propagator(colours)(angles)`.
-
-    derivatives: 1D list of (2D complex numpy.array) --
-        A list of the derivatives of the propagator at the specified angles,
-        with respect to each of the given angles in turn.
-    """
-    iden = np.identity(2 * ns, dtype = np.complex128)
-    props  = map(lambda (c, a): prop_generator(c, ns = ns)(a), pulses)
-    """List of single propagator matrices."""
-    derivs = map(lambda (c, a): deriv_generator(c, ns = ns)(a), pulses)
-    """List of the derivatives of the single propagator matrices."""
-    part_f = scan(np.dot, props)
-    part_b = scan_back(np.dot, props)
-    propagator = part_f[-1]
-    part_f = part_f[:-1]
-    part_f.insert(0, iden) # [id, prop_0, ..., prop_0 . ... . prop_{n-1}]
-    part_b = part_b[1:]
-    part_b.append(iden) # [prop_1 . ... . prop_n, ..., prop_n, id]
-
-    derivatives = np.array(map3(lambda *args: reduce(np.dot, args),
-                                part_f, derivs, part_b))
-    return propagator, derivatives
-
-def distance_and_derivatives(start, target, propagator, propagator_derivatives):
-    """
-    More efficient method of calculating the infidelity of
-        <target| propagator |start>
-    and its derivatives with respect to each of the pulses' angles.
-    """
-    tus = inner_product(target, propagator, start)
-    # tus stands for <target|U|start>
-    tus_conj = tus.real - tus.imag * 1.0j
-    distance = 1.0 - (tus * tus_conj).real
-    def single_derivative(d_op):
-        """
-        Get the derivative with respect to one of the parameters.  This is
-            (1 - |<t|U'|s>|^2)'
-            = - (<s|adj(U)'|t><t|U|s> + <s|adj(U)|t><t|U'|s>)
-            = - 2 * Re(adj(<t|U|s>) * <t|U'|s>)
-        because adj(U)' = adj(U') for unitary operators.  This means we only
-        have to do one additional matrix multiplication, which beats the naive
-        implementation by a couple of multiplications and doesn't require the
-        creation of any new matrices.  We also reuse `tus`.
-        """
-        return -2.0 * (tus_conj * inner_product(target, d_op, start)).real
-    derivatives = np.array(map(single_derivative, propagator_derivatives))
-    return distance, derivatives
+    for row in xrange(2 * ns):
+        for col in xrange(2 * ns):
+            matrix[row][col] = gen(pi * angle, row, col, ns)
 
 def make_ground_state(populated, ns):
     """
@@ -303,6 +196,24 @@ def motional_states_needed(colours):
 
 # Computational classes
 
+class ColourOperator(object):
+    def __init__(this, colour, ns):
+        this._gen = {'c':c_el, 'r':r_el, 'b':b_el}[colour]
+        this._d_gen = {'c':d_c_el, 'r':d_r_el, 'b':d_b_el}[colour]
+        this._ns = ns
+        this._angle = None
+        this.op = np.zeros((2 * ns, 2 * ns), dtype = np.complex128)
+        this.d_op = np.zeros((2 * ns, 2 * ns), dtype = np.complex128)
+
+    @property
+    def angle(this):
+        return this._angle
+    @angle.setter
+    def angle(this, new_angle):
+        this._angle = new_angle
+        update_matrix(this.op, this._gen, this._angle, this._ns)
+        update_matrix(this.d_op, this._d_gen, this._angle, this._ns)
+
 class PulseSequence(object):
     """
     Arguments:
@@ -334,102 +245,134 @@ class PulseSequence(object):
         set of angles will be stored---this is preferable for optimisation runs,
         particularly with superpositions of large n.
     """
-    def __init__(this, colours, target = None, start = [0], use_cache = True):
-        this._cache = {}
-        this._colours = colours
+    def __init__(this, colours, target = None, start = [0]):
+        this.colours = colours
+        this._len = len(this.colours)
         this._ns = max(motional_states_needed(colours),
                        max(target) + 1, max(start) + 1)
         this._target = make_ground_state(target, this._ns)\
                        if target is not None else None
         this._start = make_ground_state(start, this._ns)
-        this._use_cache = use_cache
+        this._lin_ops =\
+            np.array([ ColourOperator(c, this._ns) for c in this.colours ])
+        this._angles = None
 
-    def _clear_cache(this):
-        this._cache = {}
+        # Output storage.
+        this._u = np.empty((2 * this._ns, 2 * this._ns), dtype = np.complex128)
+        this._d_u = np.empty((this._len, 2 * this._ns, 2 * this._ns),
+                             dtype = np.complex128)
+        this._dist = float("inf")
+        this._d_dist = np.zeros(this._len, dtype = np.float64)
 
-    @property
-    def start(this):
-        return this._start
-    @start.setter
-    def start(this, new_start):
-        if not np.array_equal(this._start, new_start):
-            this._cache = {}
-            this._start = new_start
+        # Pre-allocate calculation scratch space and fixed variables.
+        this._id = np.identity(2 * this._ns, dtype = np.complex128)
+        this._partials_ltr = np.empty_like(this._d_u)
+        this._partials_rtl = np.empty_like(this._d_u)
+        this._partials_ltr[0] = this._id
+        this._partials_rtl[0] = this._id
+        this._temp = np.empty_like(this._u)
 
-    @property
-    def target(this):
-        return this._target
-    @target.setter
-    def target(this, new_target):
-        if not np.array_equal(this._target, new_target):
-            this._clear_cache()
-            this._target = new_target
+    def _update_propagator_and_derivatives(this):
+        """
+        Efficient method of calculating the complete propagator, and all the
+        derivatives associated with it.
+
+        Arguments:
+        pulses: 1D list of (colour * angle) --
+            colour: 'c' | 'r' | 'b' --
+                The colour of the pulse to be applied, 'c' is the carrier, 'r' is
+                the first red sideband and 'b' is the first blue sideband.
+
+            angle: double --
+                The angle of specified pulse divided by pi, e.g. `angle = 0.5`
+                corresponds to the pulse being applied for an angle of `pi / 2`.
+
+            A list of the pulses to apply, at the given colour and angle.
+
+        ns: unsigned --
+            The number of motional states to consider when building the matrices.
+            Note this is not the maximum motional state - the max will be |ns - 1>.
+
+        Returns:
+        propagator: 2D complex numpy.array --
+            The full propagator for the chain of operators, identical to calling
+            `multi_propagator(colours)(angles)`.
+
+        derivatives: 1D list of (2D complex numpy.array) --
+            A list of the derivatives of the propagator at the specified angles,
+            with respect to each of the given angles in turn.
+        """
+        for i in xrange(this._len - 1):
+            np.dot(this._partials_ltr[i], this._lin_ops[i].op,
+                   out = this._partials_ltr[i + 1])
+            np.dot(this._lin_ops[-(i + 1)].op, this._partials_rtl[i],
+                   out = this._partials_rtl[i + 1])
+
+        np.dot(this._partials_ltr[-1], this._lin_ops[-1].op, out = this._u)
+        for i in xrange(this._len):
+            np.dot(this._partials_ltr[i], this._lin_ops[i].d_op,
+                   out = this._temp)
+            np.dot(this._temp, this._partials_rtl[-(i + 1)], out = this._d_u[i])
+
+    def _update_distance_and_derivatives(this):
+        tus = inner_product(this._target, this._u, this._start)
+        tus_conj = np.conj(tus)
+
+        this._dist = 1.0 - (tus.real * tus.real + tus.imag * tus.imag)
+        for i in xrange(this._len):
+            prod = inner_product(this._target, this._d_u[i], this._start)
+            this._d_dist[i] = -2.0 * (tus_conj * prod).real
 
     def _calculate_all(this, angles):
-        prop, d_prop =\
-                propagator_and_derivatives(zip(this._colours, angles), this._ns)
-        if this.target is not None:
-            dist, d_dist = distance_and_derivatives(this.start, this.target,
-                                                    prop, d_prop)
-            this._cache[angles] = {
-                "propagator" : prop,
-                "propagator derivatives" : d_prop,
-                "distance" : dist,
-                "distance derivatives" : d_dist }
-        else:
-            this._cache[angles] = {
-                "propagator" : prop,
-                "propagator derivatives" : d_prop }
-
-    def _lookup_or_calculate(this, angles, key):
-        assert len(angles) == len(this._colours),\
-            "The sequence is {} colours long, but there were {} angles."\
-            .format(len(this._colours), len(angles))
-        angles_ = tuple(angles)
-        if angles_ not in this._cache:
-            # if we're not using the cache in general, clear out the old data
-            if not this._use_cache:
-                this._clear_cache()
-            # we still store in the cache so calls to U, d_U, distance and
-            # d_distance don't force recalculation if we're doing them with the
-            # same angles - we still get the economy of calculating all at once
-            this._calculate_all(angles_)
-        return this._cache[angles_][key]
+        assert len(angles) == this._len,\
+            "There are {} colours in the sequence, but I got {} angles."\
+            .format(this._len, len(angles))
+        if np.array_equal(this._angles, angles):
+            return
+        this._angles = angles
+        for i in xrange(len(this._angles)):
+            this._lin_ops[i].angle = this._angles[i]
+        this._update_propagator_and_derivatives()
+        this._update_distance_and_derivatives()
 
     def U(this, angles):
         """
         Get the propagator of the pulse sequence stored in the class with the
         specified angles.
         """
-        return this._lookup_or_calculate(angles, "propagator")
+        this._calculate_all(angles)
+        return this._u
 
     def d_U(this, angles):
         """
         Get the derivatives of the propagator of the pulse sequence stored in
         the class with the specified angles.
         """
-        return this._lookup_or_calculate(angles, "propagator derivatives")
+        this._calculate_all(angles)
+        return this._d_u
 
     def distance(this, angles):
         """
         Get the distance of the pulse sequence stored in the class with the
         specified angles.
         """
-        assert this.target is not None,\
+        assert this._target is not None,\
             "You must set the target state to calculate the distance."
-        return this._lookup_or_calculate(angles, "distance")
+        this._calculate_all(angles)
+        return this._dist
 
     def d_distance(this, angles):
         """
         Get the derivatives of the distance of the pulse sequence stored in the
         class with the specified angles.
         """
-        assert this.target is not None,\
+        assert this._target is not None,\
             "You must set the target state to calculate the distance."
-        return this._lookup_or_calculate(angles, "distance derivatives")
+        this._calculate_all(angles)
+        return np.copy(this._d_dist)
 
     def optimise(this, initial_angles):
-        assert this.target is not None,\
+        assert this._target is not None,\
             "You must set the target state to optimise a pulse sequence."
         return scipy.optimize.minimize(this.distance, initial_angles,
                                        jac = this.d_distance,
