@@ -58,7 +58,7 @@ def group_angles(angles):
     """Remove duplicate angle sequences, and return as a set."""
     return set(map(lambda lst: tuple(map(lambda x: round(x, 6), lst)), angles))
 
-def try_colours(target, colours, before_success = 5, after_success = 0):
+def try_colours(target, colours, before_success = 1, after_success = 0):
     """
     Try to optimise the given colour sequence to hit the specified target.
     Basically just a wrapper around PulseSequence.optimise().
@@ -108,7 +108,7 @@ def try_colours(target, colours, before_success = 5, after_success = 0):
             break
     return group_angles(outs)
 
-def search(target, before_success = 5, after_success = 0, log = None):
+def search(target, before_success = 1, after_success = 0, log_file = None):
     """
     Find all pulses sequences of the minimum length which will evolve the state
     |g0> into the target state.
@@ -157,6 +157,8 @@ def search(target, before_success = 5, after_success = 0, log = None):
         colour sequences will be of the same length, and this will be minimum
         length for which there was a convergence.
     """
+    log = lambda *tup: print(*tup, file = log_file)\
+          if log_file is not None else lambda *tup: None
     cur_len = 0
     len_successes = 0
     all_outs = []
@@ -169,9 +171,8 @@ def search(target, before_success = 5, after_success = 0, log = None):
         if len(angles) != 0:
             len_successes = len_successes + 1
             all_outs.append((colours, angles))
-            if log is not None:
-                print("- Success:", ", ".join(colours), file = log)
-        elif log is not None:
-            print("- Failure:", ", ".join(colours), file = log)
-    print("- Fatal: no more colour sequences to try.", file = log)
+            log("- Success:", ", ".join(colours))
+        else:
+            log("- Failure:", ", ".join(colours))
+    log("- Fatal: no more colour sequences to try.")
     return []
