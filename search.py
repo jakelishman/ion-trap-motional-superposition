@@ -4,29 +4,6 @@ from functional import *
 from itertools import *
 import random
 
-def possible_sequences(n, target):
-    """
-    An iterator through all the pulse sequences of length `n`.  Pulses which
-    start with the red sideband do not exist, because a starting red sideband
-    does nothing, so we will have already checked the corresponding (n - 1)
-    length pulse before.  Also, pulses which have two consecutive sidebands of
-    the same colour are disallowed, as this is equivalent to one pulse of
-    different length, so will have been checked before.
-    """
-    def allowed(colours):
-        tests = [
-            # First pulse mustn't be red.
-            colours[-1] is not 'r',
-            # Mustn't have two consecutive pulses of the same colour.
-            not exists(lambda (a, b): a == b, pairs(colours)),
-            # The colour sequence must reach the max occupied state exactly.
-            motional_states_needed(colours) == max(target) + 1,
-            # Last pulse mustn't be blue (implied by previous test).
-            colours[0] is not 'b' ]
-        return not False in tests
-    rev = lambda small_iterator: list(small_iterator)[::-1]
-    return ifilter(allowed, imap(rev, product("crb", repeat = n)))
-
 def colour_sequences(target):
     """
     An infinite iterator of all possible colour sequences, first with only one
@@ -37,8 +14,37 @@ def colour_sequences(target):
     colour are disallowed, as this is equivalent to one pulse of different
     length, so will have been checked before.
     """
-    possibles = lambda n: possible_sequences(n, target)
-    return chain.from_iterable(imap(possibles, count(1)))
+    max_n = max(target)
+    rev = lambda small_iterator: list(small_iterator)[::-1]
+    def allowed(colours):
+        tests = [
+            # First pulse mustn't be red.
+            colours[-1] is not 'r',
+            # Mustn't have two consecutive pulses of the same colour.
+            not exists(lambda (a, b): a == b, pairs(colours)),
+            # The colour sequence must reach the max occupied state exactly.
+            motional_states_needed(colours) == max_n + 1,
+            # Last pulse mustn't be blue (implied by previous test).
+            colours[0] is not 'b' ]
+        return not False in tests
+    def possibles(ncols):
+        """
+        An iterator through all the pulse sequences of length `n`.  Pulses which
+        start with the red sideband do not exist, because a starting red
+        sideband does nothing, so we will have already checked the corresponding
+        (n - 1) length pulse before.  Also, pulses which have two consecutive
+        sidebands of the same colour are disallowed, as this is equivalent to
+        one pulse of different length, so will have been checked before.
+        """
+        return ifilter(allowed, imap(rev, product("crb", repeat = ncols)))
+    # There are no shorter sequences than `[ 'r', 'b' ] * max(n) // 2` for even
+    # max(n), or `[ 'r', 'c' ] + [ 'r', 'b' ] * max(n) // 2` for odd max(n) that
+    # can satisfy the rules (except for the trivial max(n) == 0).
+    min_cols = max_n if max_n % 2 == 0 else max_n + 1
+    # There are no longer sequences than `[ 'c' ] + [ 'b', 'c' ] * max(n)` that
+    # can satisfy the rules, so we can cut off there.
+    max_cols = 2 * max_n + 1
+    return chain.from_iterable(imap(possibles, xrange(min_cols, max_cols + 1)))
 
 def start_angles(colours):
     """Produce a set of angles to use to start for a certain colour sequence."""
@@ -167,3 +173,5 @@ def search(target, before_success = 5, after_success = 0, log = None):
                 print("- Success:", ", ".join(colours), file = log)
         elif log is not None:
             print("- Failure:", ", ".join(colours), file = log)
+    print("- Fatal: no more colour sequences to try.", file = log)
+    return []
