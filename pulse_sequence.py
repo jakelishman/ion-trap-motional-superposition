@@ -1,38 +1,7 @@
+from __future__ import division
 import numpy as np
 import scipy.optimize
 from math import *
-from functional import *
-
-# Details about elements of linear operator matrices.
-
-def is_excited(row, col, ns):
-    """True iff the position in the matrix is in the |e><e| block."""
-    return col < ns and row < ns
-def is_ground(row, col, ns):
-    """True iff the position in the matrix is in the |g><g| block."""
-    return col >= ns and row >= ns
-def is_sigma_plus(row, col, ns):
-    """True iff the position in the matrix is in the |e><g| block."""
-    return col >= ns and row < ns
-def is_sigma_minus(row, col, ns):
-    """True iff the position in the matrix is in the |g><e| block."""
-    return row >= ns and col < ns
-def is_internal_transition(row, col, ns):
-    """True iff the position in the matrix is in the |g><e| + |e><g| block."""
-    return is_sigma_plus(row, col, ns) or is_sigma_minus(row, col, ns)
-def start_n(_, col, ns):
-    """If the matrix element is |m><n|, return the value `n`."""
-    return col % ns
-def end_n(row, _, ns):
-    """If the matrix element is |m><n|, return the value `m`."""
-    return row % ns
-def is_ladder(ladder):
-    """True iff the element's Fock part satisfies |n + ladder><n|, i.e.
-    is_ladder(0) is true if it's an |n><n| element, is_ladder(1) is true if it's
-    a creation state and is_ladder(-1) is true if it's an annihilation."""
-    return lambda row, col, ns:\
-        end_n(row, col, ns) - start_n(row, col, ns) is ladder
-
 
 # Functions on linear operators
 
@@ -49,117 +18,123 @@ def inner_product(final, operator, start):
 
 # Building blocks of linear operators for sideband transitions
 
-def c_el(angle, row, col, ns):
+def ladder_transition_indices(dim, ladder):
     """
-    Return the element of the propagator matrix for the carrier signal in the
-    LD regime when applied for an angle `angle` in the interaction picture.
-    `ns` is the number of Fock states present in the matrix.
+    Returns a tuple which, when used as an array index, will return a single
+    slice of the sigma-plus * ladder diagonal, followed immediately by the
+    sigma-minus * adj(ladder) diagonal.
     """
-    if is_ladder(0)(row, col, ns):
-        if is_internal_transition(row, col, ns):
-            return -1.0j * sin(angle)
-        else: # |ej><ej| or |gj><gj|
-            return cos(angle)
+    if ladder >= 0:
+        xs = np.arange(ladder, dim - ladder, dtype = np.intp)
     else:
-        return 0.0
+        xs = np.concatenate((
+            np.arange((dim // 2) + ladder, dtype = np.intp),
+            np.arange((dim // 2) - ladder, dim, dtype = np.intp) ))
+    return (xs, np.roll(xs, xs.shape[0] // 2))
 
-def d_c_el(angle, row, col, ns):
+def generate_carrier_updater(matrix):
     """
-    Return the element of the derivative of the propagator matrix for the
-    carrier signal w.r.t the angle in the LD regime when applied for an angle
-    `angle` in the interaction picture.  `ns` is the number of Fock states
-    present in the matrix.
+    Create a function which will update the given matrix representing a carrier
+    transition, when given a new angle.
     """
-    # c_el is only sin or cos, and d(sin(x))/d(x) = sin(x + pi/2), and similar
-    # for cos.
-    return c_el(angle + pi / 2, row, col, ns)
+    dim = matrix.shape[0]
+    trans_indx = ladder_transition_indices(dim, 0)
+    def update_carrier(angle):
+        """Update the 3 relevant diagonals in the closed-over matrix with a new
+        angle, representing the carrier transition."""
+        np.fill_diagonal(matrix, cos(angle) + 0.0j)
+        matrix[trans_indx] = -1.0j * sin(angle)
+    return update_carrier
 
-def r_el(angle, row, col, ns):
+def generate_d_carrier_updater(matrix):
     """
-    Return the element of the propagator matrix for the red sideband signal in
-    the LD regime when applied for an angle `angle` in the interaction picture.
-    `ns` is the number of Fock states present in the matrix.
+    Create a function which will update the given matrix representing the
+    derivative of a carrier transition, when given a new angle.
     """
-    if is_excited(row, col, ns) and is_ladder(0)(row, col, ns):
-        return cos(sqrt(start_n(row, col, ns) + 1) * angle)
-    elif is_ground(row, col, ns) and is_ladder(0)(row, col, ns):
-        return cos(sqrt(start_n(row, col, ns)) * angle)
-    elif is_sigma_plus(row, col, ns) and is_ladder(-1)(row, col, ns):
-        return -1.0j * sin(sqrt(start_n(row, col, ns)) * angle)
-    elif is_sigma_minus(row, col, ns) and is_ladder(1)(row, col, ns):
-        return -1.0j * sin(sqrt(start_n(row, col, ns) + 1) * angle)
-    else:
-        return 0.0
+    dim = matrix.shape[0]
+    trans_indx = ladder_transition_indices(dim, 0)
+    def update_d_carrier(angle):
+        """Update the 3 relevant diagonals in the closed-over matrix with a new
+        angle, representing the derivative of the carrier transition."""
+        np.fill_diagonal(matrix, -sin(angle))
+        matrix[trans_indx] = -1.0j * cos(angle)
+    return update_d_carrier
 
-def d_r_el(angle, row, col, ns):
+def generate_red_updater(matrix):
     """
-    Return the element of the derivative of the propagator matrix for the
-    red sideband signal w.r.t the angle in the LD regime when applied for an
-    angle `angle` in the interaction picture.  `ns` is the number of Fock states
-    present in the matrix.
+    Create a function which will update the given matrix representing a 1st red
+    transition, when given a new angle.
     """
-    if is_excited(row, col, ns) and is_ladder(0)(row, col, ns):
-        factor = sqrt(start_n(row, col, ns) + 1)
-        return -factor * sin(factor * angle)
-    elif is_ground(row, col, ns) and is_ladder(0)(row, col, ns):
-        factor = sqrt(start_n(row, col, ns))
-        return -factor * sin(factor * angle)
-    elif is_sigma_plus(row, col, ns) and is_ladder(-1)(row, col, ns):
-        factor = sqrt(start_n(row, col, ns))
-        return factor * -1.0j * cos(factor * angle)
-    elif is_sigma_minus(row, col, ns) and is_ladder(1)(row, col, ns):
-        factor = sqrt(start_n(row, col, ns) + 1)
-        return factor * -1.0j * cos(factor * angle)
-    else:
-        return 0.0
+    dim = matrix.shape[0]
+    ns = dim // 2
+    phase_indx = np.diag_indices(dim)
+    trans_indx = ladder_transition_indices(dim, -1)
+    root = [ sqrt(n) for n in xrange(ns + 1) ]
+    def update_red(angle):
+        """Update the 3 relevant diagonals in the closed-over matrix with a new
+        angle, representing the 1st red transition."""
+        matrix[phase_indx] = [ cos(root[n + z] * angle)
+                               for z in (1, 0) for n in xrange(ns) ]
+        matrix[trans_indx] = [ -1.0j * sin(root[n] * angle)
+                               for _ in (0, 1) for n in xrange(1, ns) ]
+    return update_red
 
-def b_el(angle, row, col, ns):
+def generate_d_red_updater(matrix):
     """
-    Return the element of the propagator matrix for the blue sideband signal in
-    the LD regime when applied for an angle `angle` in the interaction picture.
-    `ns` is the number of Fock states present in the matrix.
+    Create a function which will update the given matrix representing the
+    derivative of a 1st red transition, when given a new angle.
     """
-    if is_excited(row, col, ns) and is_ladder(0)(row, col, ns):
-        return cos(sqrt(start_n(row, col, ns)) * angle)
-    elif is_ground(row, col, ns) and is_ladder(0)(row, col, ns):
-        return cos(sqrt(start_n(row, col, ns) + 1) * angle)
-    elif is_sigma_plus(row, col, ns) and is_ladder(1)(row, col, ns):
-        return -1.0j * sin(sqrt(start_n(row, col, ns) + 1) * angle)
-    elif is_sigma_minus(row, col, ns) and is_ladder(-1)(row, col, ns):
-        return -1.0j * sin(sqrt(start_n(row, col, ns)) * angle)
-    else:
-        return 0.0
+    dim = matrix.shape[0]
+    ns = dim // 2
+    phase_indx = np.diag_indices(dim)
+    trans_indx = ladder_transition_indices(dim, -1)
+    root = [ sqrt(n) for n in xrange(ns + 1) ]
+    def update_d_red(angle):
+        """Update the 3 relevant diagonals in the closed-over matrix with a new
+        angle, representing the derivative of the 1st red transition."""
+        matrix[phase_indx] = [ -root[n + z] * sin(root[n + z] * angle)
+                               for z in (1, 0) for n in xrange(ns) ]
+        matrix[trans_indx] = [ -1.0j * root[n] * cos(root[n] * angle)
+                               for _ in (0, 1) for n in xrange(1, ns) ]
+    return update_d_red
 
-def d_b_el(angle, row, col, ns):
+def generate_blue_updater(matrix):
     """
-    Return the element of the derivative of the propagator matrix for the
-    blue sideband signal w.r.t the angle in the LD regime when applied for an
-    angle `angle` in the interaction picture.  `ns` is the number of Fock states
-    present in the matrix.
+    Create a function which will update the given matrix representing a 1st blue
+    transition, when given a new angle.
     """
-    if is_excited(row, col, ns) and is_ladder(0)(row, col, ns):
-        factor = sqrt(start_n(row, col, ns))
-        return -factor * sin(factor * angle)
-    elif is_ground(row, col, ns) and is_ladder(0)(row, col, ns):
-        factor = sqrt(start_n(row, col, ns) + 1)
-        return -factor * sin(factor * angle)
-    elif is_sigma_plus(row, col, ns) and is_ladder(1)(row, col, ns):
-        factor = sqrt(start_n(row, col, ns) + 1)
-        return factor * -1.0j * cos(factor * angle)
-    elif is_sigma_minus(row, col, ns) and is_ladder(-1)(row, col, ns):
-        factor = sqrt(start_n(row, col, ns))
-        return factor * -1.0j * cos(factor * angle)
-    else:
-        return 0.0
+    dim = matrix.shape[0]
+    ns = dim // 2
+    phase_indx = np.diag_indices(dim)
+    trans_indx = ladder_transition_indices(dim, 1)
+    root = [ sqrt(n) for n in xrange(ns + 1) ]
+    def update_blue(angle):
+        """Update the 3 relevant diagonals in the closed-over matrix with a new
+        angle, representing the 1st blue transition."""
+        matrix[phase_indx] = [ cos(root[n + z] * angle)
+                               for z in (0, 1) for n in xrange(ns) ]
+        matrix[trans_indx] = [ -1.0j * sin(root[n] * angle)
+                               for _ in (0, 1) for n in xrange(1, ns) ]
+    return update_blue
 
-def update_matrix(matrix, gen, angle, ns):
+def generate_d_blue_updater(matrix):
     """
-    Internal function.
-    Build a matrix at the specified angle using the given generator function.
+    Create a function which will update the given matrix representing the
+    derivative of a 1st blue transition, when given a new angle.
     """
-    for row in xrange(2 * ns):
-        for col in xrange(2 * ns):
-            matrix[row][col] = gen(pi * angle, row, col, ns)
+    dim = matrix.shape[0]
+    ns = dim // 2
+    phase_indx = np.diag_indices(dim)
+    trans_indx = ladder_transition_indices(dim, 1)
+    root = [ sqrt(n) for n in xrange(ns + 1) ]
+    def update_d_blue(angle):
+        """Update the 3 relevant diagonals in the closed-over matrix with a new
+        angle, representing the derivative of the 1st blue transition."""
+        matrix[phase_indx] = [ -root[n + z] * sin(root[n + z] * angle)
+                               for z in (0, 1) for n in xrange(ns) ]
+        matrix[trans_indx] = [ -1.0j * root[n] * cos(root[n] * angle)
+                               for _ in (0, 1) for n in xrange(1, ns) ]
+    return update_d_blue
 
 def make_ground_state(populated, ns):
     """
@@ -198,12 +173,18 @@ def motional_states_needed(colours):
 
 class ColourOperator(object):
     def __init__(this, colour, ns):
-        this._gen = {'c':c_el, 'r':r_el, 'b':b_el}[colour]
-        this._d_gen = {'c':d_c_el, 'r':d_r_el, 'b':d_b_el}[colour]
-        this._ns = ns
-        this._angle = None
         this.op = np.zeros((2 * ns, 2 * ns), dtype = np.complex128)
         this.d_op = np.zeros((2 * ns, 2 * ns), dtype = np.complex128)
+        this._updater = {
+            'c': generate_carrier_updater,
+            'r': generate_red_updater,
+            'b': generate_blue_updater }[colour](this.op)
+        this._d_updater = {
+            'c': generate_d_carrier_updater,
+            'r': generate_d_red_updater,
+            'b': generate_d_blue_updater }[colour](this.d_op)
+        this._colour = colour
+        this._angle = None
 
     @property
     def angle(this):
@@ -211,8 +192,8 @@ class ColourOperator(object):
     @angle.setter
     def angle(this, new_angle):
         this._angle = new_angle
-        update_matrix(this.op, this._gen, this._angle, this._ns)
-        update_matrix(this.d_op, this._d_gen, this._angle, this._ns)
+        this._updater(pi * this._angle)
+        this._d_updater(pi * this._angle)
 
 class PulseSequence(object):
     """
