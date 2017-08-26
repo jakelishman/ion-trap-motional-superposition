@@ -190,6 +190,13 @@ while (($#)); do
         "-o" | "--output")
             fail_if_set "$opts_output_dir" "$1"
             fail_if_no_arg "$2" "$1"
+            # Create the output directory if necessary.
+            mkdir -p "$2" 2>/dev/null
+            if [[ ! $? = 0 ]]; then
+                echo "Couldn't make the output directory '$2'" >&2
+                exit 1
+            fi
+            check_output_directory_is_safe "$2"
             opts_output_dir="$(realpath "$2")"
             shift ;;
 
@@ -221,14 +228,6 @@ if [[ $opts_debug = true ]]; then
     echo "After filling in any necessary missing parameters, I have" >&2
     print_parameters >&2
 fi
-
-# Create the output directory if necessary.
-mkdir -p "$opts_output_dir" 2>/dev/null
-if [[ ! $? = 0 ]]; then
-    echo "Couldn't make the output directory '$opts_output_dir'" >&2
-    exit 1
-fi
-check_output_directory_is_safe "$opts_output_dir"
 
 # Change into the output directory for making the files.
 cd "$opts_output_dir"
