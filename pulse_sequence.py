@@ -13,7 +13,7 @@ def inner_product(final, operator, start):
     Calculates the quantity <final|operator|start>, assuming that both final and
     start are given as kets, represented by 1D numpy.arrays of complex.
     """
-    return np.linalg.multi_dot([adj(final), operator, start])
+    return adj(final).dot(operator).dot(start)
 
 
 # Building blocks of linear operators for sideband transitions
