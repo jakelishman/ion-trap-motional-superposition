@@ -109,27 +109,13 @@ fail_if_file_does_not_exist() {
 # Usage: check_output_directory_is_safe dir
 #   dir: directory to test
 check_output_directory_is_safe() {
-    output_directory_unsafe=false
     for file in "$output_inputs_file" "$output_log_file" "$output_results_file"\
              "$output_parameters_file" "$output_submission_file"; do
         if [[ -e "$1/$file" ]]; then
-            output_directory_unsafe=true
+            echo "ERROR: output directory '$1' has file conflicts." >&2
+            exit 1
         fi
     done
-    if [[ "$output_directory_unsafe" = true ]]; then
-        echo "WARN: output directory '$1' has file conflicts." >&2
-        echo -n "      Should I continue anyway and overwrite them [yN]? " >&2
-        read -n 1 override_unsafe_output_directory
-        echo >&2
-        case "$override_unsafe_output_directory" in
-            "y" | "Y")
-                return 0 ;;
-            *)
-                echo "ERROR: terminated script" >&2
-                exit 1 ;;
-        esac
-    fi
-    return 0
 }
 
 # Print out the parameter list to standard output.  Takes no arguments.
