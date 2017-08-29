@@ -107,9 +107,9 @@ def main():
         results = search.search(target, before_success, after_success,
                                 log_file = sys.stderr)
         for colours, angle_set in results:
-            oprint("- Colours:", ", ".join(colours))
+            oprint("  Colours:", ", ".join(colours))
             for angles in angle_set:
-                oprint("--- Angles:", ", ".join(map(str, angles)))
+                oprint("    Angles:", ", ".join(map(str, angles)))
     return
 
 if __name__ == "__main__":

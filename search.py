@@ -171,8 +171,8 @@ def search(target, before_success = 1, after_success = 0, log_file = None):
         if len(angles) != 0:
             len_successes = len_successes + 1
             all_outs.append((colours, angles))
-            log("- Success:", ", ".join(colours))
+            log("  Success:", ", ".join(colours))
         else:
-            log("- Failure:", ", ".join(colours))
-    log("- Fatal: no more colour sequences to try.")
+            log("  Failure:", ", ".join(colours))
+    log("  Fatal: no more colour sequences to try.")
     return []
