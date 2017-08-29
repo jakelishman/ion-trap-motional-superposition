@@ -230,7 +230,8 @@ class PulseSequence(object):
         this.colours = colours
         this._len = len(this.colours)
         this._ns = max(motional_states_needed(colours),
-                       max(target) + 1, max(start) + 1)
+                       max(start) + 1,
+                       max(target) + 1 if target is not None else 0)
         this._target = make_ground_state(target, this._ns)\
                        if target is not None else None
         this._start = make_ground_state(start, this._ns)
@@ -314,7 +315,8 @@ class PulseSequence(object):
         for i in xrange(len(this._angles)):
             this._lin_ops[i].angle = this._angles[i]
         this._update_propagator_and_derivatives()
-        this._update_distance_and_derivatives()
+        if this._target is not None:
+            this._update_distance_and_derivatives()
 
     def U(this, angles):
         """
