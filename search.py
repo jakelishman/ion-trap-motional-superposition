@@ -40,7 +40,7 @@ def colour_sequences(target):
     # There are no shorter sequences than `[ 'r', 'b' ] * max(n) // 2` for even
     # max(n), or `[ 'r', 'c' ] + [ 'r', 'b' ] * max(n) // 2` for odd max(n) that
     # can satisfy the rules (except for the trivial max(n) == 0).
-    min_cols = max_n if max_n % 2 == 0 else max_n + 1
+    min_cols = max(max_n if max_n % 2 == 0 else max_n + 1, 1)
     # There are no longer sequences than `[ 'c' ] + [ 'b', 'c' ] * max(n)` that
     # can satisfy the rules, so we can cut off there.
     max_cols = 2 * max_n + 1
