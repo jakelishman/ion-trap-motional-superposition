@@ -75,8 +75,8 @@ def generate_red_updater(matrix):
         angle, representing the 1st red transition."""
         matrix[phase_indx] = [ cos(root[n + z] * angle)
                                for z in (1, 0) for n in xrange(ns) ]
-        matrix[trans_indx] = [ -1.0j * sin(root[n] * angle)
-                               for _ in (0, 1) for n in xrange(1, ns) ]
+        matrix[trans_indx] = [ z * sin(root[n] * angle)
+                               for z in (1, -1) for n in xrange(1, ns) ]
     return update_red
 
 def generate_d_red_updater(matrix):
@@ -94,8 +94,8 @@ def generate_d_red_updater(matrix):
         angle, representing the derivative of the 1st red transition."""
         matrix[phase_indx] = [ -root[n + z] * sin(root[n + z] * angle)
                                for z in (1, 0) for n in xrange(ns) ]
-        matrix[trans_indx] = [ -1.0j * root[n] * cos(root[n] * angle)
-                               for _ in (0, 1) for n in xrange(1, ns) ]
+        matrix[trans_indx] = [ z * root[n] * cos(root[n] * angle)
+                               for z in (1, -1) for n in xrange(1, ns) ]
     return update_d_red
 
 def generate_blue_updater(matrix):
@@ -113,8 +113,8 @@ def generate_blue_updater(matrix):
         angle, representing the 1st blue transition."""
         matrix[phase_indx] = [ cos(root[n + z] * angle)
                                for z in (0, 1) for n in xrange(ns) ]
-        matrix[trans_indx] = [ -1.0j * sin(root[n] * angle)
-                               for _ in (0, 1) for n in xrange(1, ns) ]
+        matrix[trans_indx] = [ z * sin(root[n] * angle)
+                               for z in (1, -1) for n in xrange(1, ns) ]
     return update_blue
 
 def generate_d_blue_updater(matrix):
@@ -132,8 +132,8 @@ def generate_d_blue_updater(matrix):
         angle, representing the derivative of the 1st blue transition."""
         matrix[phase_indx] = [ -root[n + z] * sin(root[n + z] * angle)
                                for z in (0, 1) for n in xrange(ns) ]
-        matrix[trans_indx] = [ -1.0j * root[n] * cos(root[n] * angle)
-                               for _ in (0, 1) for n in xrange(1, ns) ]
+        matrix[trans_indx] = [ z * root[n] * cos(root[n] * angle)
+                               for z in (1, -1) for n in xrange(1, ns) ]
     return update_d_blue
 
 def make_ground_state(populated, ns):
