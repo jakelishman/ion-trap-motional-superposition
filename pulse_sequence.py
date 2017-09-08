@@ -226,17 +226,15 @@ class PulseSequence(object):
         set of angles will be stored---this is preferable for optimisation runs,
         particularly with superpositions of large n.
     """
-    def __init__(this, colours, target = None, start = [0]):
+    def __init__(this, colours, target = None):
         this.colours = colours
         this._len = len(this.colours)
         this._ns = max(motional_states_needed(colours),
-                       max(start) + 1,
                        max(target) + 1 if target is not None else 0)
-        this._target = make_ground_state(target, this._ns)\
+        this._target = np.array(target, dtype = np.intp)\
                        if target is not None else None
-        this._start = make_ground_state(start, this._ns)
-        this._lin_ops =\
-            np.array([ ColourOperator(c, this._ns) for c in this.colours ])
+        this._lin_ops = np.array([ ColourOperator(c, this._ns)
+                                   for c in this.colours ])
         this._angles = None
 
         # Output storage.
@@ -253,6 +251,10 @@ class PulseSequence(object):
         this._partials_ltr[0] = this._id
         this._partials_rtl[0] = this._id
         this._temp = np.empty_like(this._u)
+        if this._target is not None:
+            this._each = 1.0 / len(this._target)
+            this._i_dists = np.empty(this._len, dtype = np.float64)
+            this._i_d_dists = np.empty_like(this._i_dists)
 
     def _update_propagator_and_derivatives(this):
         """
@@ -297,13 +299,18 @@ class PulseSequence(object):
             np.dot(this._temp, this._partials_rtl[-(i + 1)], out = this._d_u[i])
 
     def _update_distance_and_derivatives(this):
-        tus = inner_product(this._target, this._u, this._start)
-        tus_conj = np.conj(tus)
+        for i, n in enumerate(this._target):
+            z = this._u[this._ns + n, this._ns]
+            this._i_dists[i] = this._each - (z.real * z.real + z.imag * z.imag)
+        this._dist = reduce(lambda acc, x: acc + x * x, this._i_dists, 0)
 
-        this._dist = 1.0 - (tus.real * tus.real + tus.imag * tus.imag)
-        for i in xrange(this._len):
-            prod = inner_product(this._target, this._d_u[i], this._start)
-            this._d_dist[i] = -2.0 * (tus_conj * prod).real
+        for k in xrange(this._len):
+            for i, n in enumerate(this._target):
+                u_el_conj = this._u[this._ns + n, this._ns].conjugate()
+                d_u_el    = this._d_u[k, this._ns + n, this._ns]
+                this._i_d_dists[i] = -4.0 * this._i_dists[i] \
+                                     * (u_el_conj * d_u_el).real
+            this._d_dist[k] = sum(this._i_d_dists)
 
     def _calculate_all(this, angles):
         assert len(angles) == this._len,\
@@ -333,6 +340,10 @@ class PulseSequence(object):
         """
         this._calculate_all(angles)
         return this._d_u
+
+    def final(this, angles):
+        """Return the final state actually achieved with the given angles."""
+        return np.copy(this.U(angles)[:, this._ns])
 
     def distance(this, angles):
         """
