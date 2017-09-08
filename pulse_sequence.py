@@ -354,9 +354,9 @@ class PulseSequence(object):
         this._calculate_all(angles)
         return np.copy(this._d_dist)
 
-    def optimise(this, initial_angles):
+    def optimise(this, initial_angles, **kwargs):
         assert this._target is not None,\
             "You must set the target state to optimise a pulse sequence."
         return scipy.optimize.minimize(this.distance, initial_angles,
                                        jac = this.d_distance,
-                                       method = 'BFGS')
+                                       method = 'BFGS', **kwargs)
