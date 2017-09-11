@@ -106,10 +106,12 @@ def main():
         eprint("Target:", ", ".join(map(str, target)))
         results = search.search(target, before_success, after_success,
                                 log_file = sys.stderr)
-        for colours, angle_set in results:
+        for colours, dct in results:
             oprint("  Colours:", ", ".join(colours))
-            for angles in angle_set:
-                oprint("    Angles:", ", ".join(map(str, angles)))
+            for phases, angles_set in dct.iteritems():
+                oprint("    Phases:", ", ".join(map(str, phases)))
+                for angles in angles_set:
+                    oprint("      Angles:", ", ".join(map(str, angles)))
     return
 
 if __name__ == "__main__":

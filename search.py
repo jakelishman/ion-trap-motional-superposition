@@ -2,6 +2,8 @@ from __future__ import print_function
 from pulse_sequence import PulseSequence, motional_states_needed
 from functional import *
 from itertools import *
+import numpy as np
+import math
 import random
 
 def colour_sequences(target):
@@ -54,9 +56,22 @@ def was_successful(result):
     """Return True iff we should consider the optimiser result a success."""
     return result.fun < 1e-8 and result.success
 
-def group_angles(angles):
-    """Remove duplicate angle sequences, and return as a set."""
-    return set(map(lambda lst: tuple(map(lambda x: round(x, 6), lst)), angles))
+def bound_phase(phase):
+    """Get the phase angle (divided by pi) bounded on (-1, 1]."""
+    out = math.fmod(phase, 2.0)
+    return out if -1.0 < out <= 1.0 else out - np.sign(out) * 2.0
+
+def group_phases_and_angles(results):
+    """Group by phase, remove duplicate angle sequences, and return as a set."""
+    fst        = lambda tup:    tup[0]
+    snd        = lambda tup:    tup[1]
+    round_all  = lambda lst:    tuple(imap(lambda x: round(x, 5), lst))
+    set_angles = lambda angles: set(imap(round_all, angles))
+    by_phase = map(lambda t: (t[0], round_all(map(bound_phase, t[1]))), results)
+    by_phase = sorted(by_phase, key = snd)
+    by_phase = groupby(by_phase, key = snd)
+    by_phase = imap(lambda t: (t[0], imap(fst, t[1])), by_phase)
+    return dict(map(lambda t: (t[0], set_angles(t[1])), by_phase))
 
 def try_colours(target, colours, before_success = 1, after_success = 0):
     """
@@ -95,18 +110,20 @@ def try_colours(target, colours, before_success = 1, after_success = 0):
     """
     outs = []
     pulses = PulseSequence(colours, target)
+    def get_result(result):
+        return tuple(map(tuple, pulses.split_result(result)))
     for _ in xrange(before_success):
         result = pulses.optimise(start_angles(colours))
         if not was_successful(result):
             continue
         else:
-            outs.append(tuple(result.x))
+            outs.append(get_result(result))
             for _ in xrange(after_success):
                 result = pulses.optimise(start_angles(colours))
                 if was_successful(result):
-                    outs.append(tuple(result.x))
+                    outs.append(get_result(result))
             break
-    return group_angles(outs)
+    return group_phases_and_angles(outs)
 
 def search(target, before_success = 1, after_success = 0, log_file = None):
     """
@@ -157,8 +174,8 @@ def search(target, before_success = 1, after_success = 0, log_file = None):
         colour sequences will be of the same length, and this will be minimum
         length for which there was a convergence.
     """
-    log = lambda *tup: print(*tup, file = log_file)\
-          if log_file is not None else lambda *tup: None
+    log = (lambda *tup: print(*tup, file = log_file)) if log_file is not None\
+          else (lambda *tup: None)
     cur_len = 0
     len_successes = 0
     all_outs = []
@@ -167,10 +184,10 @@ def search(target, before_success = 1, after_success = 0, log_file = None):
             return all_outs
         elif len(colours) != cur_len:
             cur_len = len(colours)
-        angles = try_colours(target, colours, before_success, after_success)
-        if len(angles) != 0:
+        dct = try_colours(target, colours, before_success, after_success)
+        if len(dct) != 0:
             len_successes = len_successes + 1
-            all_outs.append((colours, angles))
+            all_outs.append((colours, dct))
             log("  Success:", ", ".join(colours))
         else:
             log("  Failure:", ", ".join(colours))
