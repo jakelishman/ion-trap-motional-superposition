@@ -244,23 +244,18 @@ cat > ${output_submission_file} << ScriptEnd
 cp "${code_dir}"/*.py "${opts_output_dir}/${output_inputs_file}" .
 
 # Terminate python 10 minutes before the walltime, so we can catch any results
-# instead of overrunning and losing everything.
-pbsexec -grace 10\
-    python -O find_sequences.py ${opts_before} ${opts_after}\
+# instead of overrunning and losing everything.  I use my own copy of it with a
+# shorter delay, so test runs don't take so long.
+#
+# The eval is necessary to get correct input and output redirection inside the
+# pbsexec script.
+${HOME}/bin/pbsexec.sh -grace 10\
+    'eval python -O find_sequences.py ${opts_before} ${opts_after}\
         <"${output_inputs_file}"\
         >"${output_results_file}"\
-        2>"${output_log_file}"
+        2>"${output_log_file}"'
 
 cp "${output_results_file}" "${output_log_file}" "${opts_output_dir}"/
-
-# Move the junk that pbsexec dumps onto stdout into the log file instead of
-# being at the end of the data.
-cd "${opts_output_dir}"
-mv "${output_results_file}" ".${output_results_file}"
-echo "" >> "${output_log_file}"
-tail -n1 ".${output_results_file}" >> "${output_log_file}"
-head -n-1 ".${output_results_file}" > "${output_results_file}"
-rm ".${output_results_file}"
 ScriptEnd
 
 if [[ "$opts_debug" = false ]]; then
