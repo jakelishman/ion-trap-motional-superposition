@@ -24,6 +24,14 @@ from math import *
 from cmath import exp as cexp
 import state_specifier as state
 from pulse_matrices import *
+from random import SystemRandom
+
+def random_array(shape, lower = 0.0, upper = 1.0, **kwargs):
+    sr = SystemRandom()
+    length = reduce(lambda acc, x: acc * x, shape, 1)\
+             if isinstance(shape, tuple) else shape
+    rands = [ sr.uniform(lower, upper) for _ in xrange(length) ]
+    return np.array(rands, **kwargs).reshape(shape)
 
 class ColourOperator(object):
     def __init__(this, colour, ns):
@@ -87,7 +95,7 @@ class PulseSequence(object):
             "You must have at least one colour in the sequence!"
         this.colours = colours
         this._len = len(this.colours)
-        this._n_phases = len(target) - 1
+        this._n_phases = len(target) - 1 if target is not None else None
         this._ns = max(motional_states_needed(colours),
                        max(map(state.motional, start)) + 1,
                        max(map(state.motional, target)) + 1\
@@ -289,22 +297,24 @@ class PulseSequence(object):
         else:
             return np.copy(this._d_dist_angles), np.copy(this._d_dist_phases)
 
-    def optimise(this, initial_angles, initial_phases = None, **kwargs):
+    def optimise(this, initial_angles = None, initial_phases = None, **kwargs):
         assert this._target is not None,\
             "You must set the target state to optimise a pulse sequence."
+        angles = random_array(this._len, dtype = np.float64)\
+                 if initial_angles is None else initial_angles
         if not this.fixed_phase:
-            phases = np.zeros(this._n_phases, dtype = np.float64)\
+            phases = random_array(this._n_phases, dtype = np.float64)\
                      if initial_phases is None else initial_phases
             assert len(phases) == this._n_phases
             def split(f):
                 return lambda xs: f(xs[:-this._n_phases], xs[-this._n_phases:])
             target_f = split(this.distance)
             jacobian = lambda xs: np.concatenate(split(this.d_distance)(xs))
-            inits = np.concatenate((initial_angles, phases))
+            inits = np.concatenate((angles, phases))
         else:
             target_f = this.distance
             jacobian = this.d_distance
-            inits = initial_angles
+            inits = angles
         return scipy.optimize.minimize(target_f, inits, jac = jacobian,
                                        method = 'BFGS', **kwargs)
 
