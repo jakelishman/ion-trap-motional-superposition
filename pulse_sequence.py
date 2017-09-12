@@ -17,7 +17,7 @@ state_specifier: (motional * ?internal * ?phase) --
     Access this type using functions from state_specifier.py.
 """
 
-from __future__ import division
+from __future__ import division, print_function
 import numpy as np
 import scipy.optimize
 from math import *
@@ -25,6 +25,7 @@ from cmath import exp as cexp
 import state_specifier as state
 from pulse_matrices import *
 from random import SystemRandom
+import itertools
 
 def random_array(shape, lower = 0.0, upper = 1.0, **kwargs):
     sr = SystemRandom()
@@ -45,7 +46,7 @@ class ColourOperator(object):
             'c': generate_d_carrier_updater,
             'r': generate_d_red_updater,
             'b': generate_d_blue_updater }[colour](this.d_op)
-        this._colour = colour
+        this.colour = colour
         this._angle = None
 
     @property
@@ -206,6 +207,8 @@ class PulseSequence(object):
                 pref * (phase * u_start[idx] * np.conj(this._tus)).real
 
     def _update_angles_if_required(this, angles):
+        if angles is None:
+            return False
         assert len(angles) == this._len,\
             "There are {} colours in the sequence, but I got {} angles."\
             .format(this._len, len(angles))
@@ -217,7 +220,9 @@ class PulseSequence(object):
         return True
 
     def _update_phases_if_required(this, phases):
-        if this.fixed_phase or np.array_equal(this._phases, phases):
+        if this.fixed_phase\
+           or phases is None\
+           or np.array_equal(this._phases, phases):
             return False
         assert 0 <= len(this._orig_target) - len(phases) <= 1,\
             "There are {} elements of the target, but I got {} phases."\
@@ -324,3 +329,62 @@ class PulseSequence(object):
         else:
             return opt_res.x[:-this._n_phases],\
                    np.insert(opt_res.x[-this._n_phases:], 0, 0.0)
+
+    def _print_trace(this, trace_out):
+        n_digits = 5
+        map_level_2 = lambda f, lst: map(lambda inner: map(f, inner), lst)
+        transpose   = lambda arr:    list(map(list, np.transpose(arr)))
+        reverse     = lambda lst:    list(reversed(lst))
+        reorder_ind = lambda arr:    map(reverse, transpose(map(reverse, arr)))
+        colour_str  = lambda cop:    "{}({})".format(cop.colour,
+                                                     round(cop.angle, n_digits))
+        def format_complex(z):
+            z = round(z.real, n_digits) + round(z.imag, n_digits) * 1.0j
+            if z.imag == 0:
+                return str(z.real)
+            elif z.real == 0:
+                return "{}i".format(z.imag)
+            return "({0} {2} {1}i)".format(z.real, abs(z.imag),
+                                           {-1: '-', 1: '+'}[np.sign(z.imag)])
+        def normalise_string_lengths(lst):
+            maxl = reduce(lambda acc, s: max(acc, len(s)), lst, 0)
+            return map(lambda s: s + " " * (maxl - len(s)), lst)
+        def split_ground_excited(arr):
+            split = lambda lst: [ lst[:len(lst) // 2], lst[len(lst) // 2:] ]
+            return list(itertools.chain.from_iterable(map(split, arr)))
+        def group_pulses(arr):
+            pair = lambda line: [ "  ".join(line[2 * i : 2 * i + 2])\
+                                  for i in xrange(len(line) // 2) ]
+            return map(pair, arr)
+
+        str_cols = split_ground_excited(map_level_2(format_complex, trace_out))
+        for i, col in enumerate(str_cols):
+            str_cols[i] = col + [ "|e>" if i % 2 is 0 else "|g>" ]
+        str_cols = map(normalise_string_lengths, str_cols)
+        individual = reorder_ind(str_cols)
+        colour_strings = map(colour_str, this._lin_ops) + [ "start" ]
+        with_colours = transpose([ colour_strings ] + group_pulses(individual))
+        motionals = [ "|{}>".format(i) for i in xrange(this._ns - 1, -1, -1) ]
+        with_motionals = [ [ "", "" ] + motionals ] + with_colours
+        for line in transpose(map(normalise_string_lengths, with_motionals)):
+            print("  |  ".join(line))
+
+    def trace(this, angles = None, format = True):
+        """
+        Prettily print the evolved state after each pulse of the colour
+        sequence.  If `format == False`, then the states (including the start
+        state) will be returned as a list, and nothing will be printed.
+
+        If the angles of the pulses are not specified then the last used set of
+        angles will be traced instead.  This is useful for tracing the immediate
+        output of an optimise call.
+        """
+        this._update_angles_if_required(angles)
+        out = np.empty((this._len + 1, 2 * this._ns), dtype = np.complex128)
+        out[0] = this._start
+        for i in xrange(this._len):
+            out[i + 1] = np.dot(this._lin_ops[this._len - i - 1].op, out[i])
+        if not format:
+            return out
+        else:
+            this._print_trace(out)
