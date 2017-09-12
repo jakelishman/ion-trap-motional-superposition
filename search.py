@@ -50,11 +50,17 @@ def colour_sequences(target):
 
 def start_angles(colours):
     """Produce a set of angles to use to start for a certain colour sequence."""
-    return map(lambda _: random.uniform(-1, 1), colours)
+    return map(lambda _: random.uniform(0, 1), colours)
+
+def was_semi_successful(result):
+    """Return True iff the result was mathematically successful, even if not
+    physically so."""
+    return result.fun < 1e-8 and result.success
 
 def was_successful(result):
-    """Return True iff we should consider the optimiser result a success."""
-    return result.fun < 1e-8 and result.success
+    """Return True iff we should consider the result a complete success."""
+    return was_semi_successful(result)\
+           and not any(map(lambda x: x < 0, result.x))
 
 def bound_phase(phase):
     """Get the phase angle (divided by pi) bounded on (-1, 1]."""
@@ -73,7 +79,8 @@ def group_phases_and_angles(results):
     by_phase = imap(lambda t: (t[0], imap(fst, t[1])), by_phase)
     return dict(map(lambda t: (t[0], set_angles(t[1])), by_phase))
 
-def try_colours(target, colours, before_success = 1, after_success = 0):
+def try_colours(target, colours, before_success = 1, after_success = 0,
+                max_retries = 0):
     """
     Try to optimise the given colour sequence to hit the specified target.
     Basically just a wrapper around PulseSequence.optimise().
@@ -102,6 +109,10 @@ def try_colours(target, colours, before_success = 1, after_success = 0):
         success already.  The maximum number of angle sequences which can be
         returned is `1 + after_success`.
 
+    max_retries (optional, 0): unsigned integer --
+        The number of additional retries allowed to fix semi-successful results
+        (i.e. ones which are valid mathematically but not physically).
+
     Returns:
     set of tuples of doubles --
         A set of all the successful sequences of angles which will evolve the
@@ -112,20 +123,31 @@ def try_colours(target, colours, before_success = 1, after_success = 0):
     pulses = PulseSequence(colours, target)
     def get_result(result):
         return tuple(map(tuple, pulses.split_result(result)))
-    for _ in xrange(before_success):
+    tries = 0
+    retries = 0
+    while (tries - retries) < before_success:
         result = pulses.optimise(start_angles(colours))
         if not was_successful(result):
+            if was_semi_successful(result):
+                retries += 1
+            tries += 1
             continue
         else:
             outs.append(get_result(result))
-            for _ in xrange(after_success):
+            tries = 0
+            retries = 0
+            while (tries - retries) < after_success:
                 result = pulses.optimise(start_angles(colours))
                 if was_successful(result):
                     outs.append(get_result(result))
+                elif was_semi_successful(result):
+                    retries += 1
+                tries += 1
             break
     return group_phases_and_angles(outs)
 
-def search(target, before_success = 1, after_success = 0, log_file = None):
+def search(target, before_success = 1, after_success = 0, max_retries = 0,
+           log_file = None):
     """
     Find all pulses sequences of the minimum length which will evolve the state
     |g0> into the target state.
@@ -148,6 +170,10 @@ def search(target, before_success = 1, after_success = 0, log_file = None):
         Number of attempts to find further angle sequences after we've seen a
         success already.  The maximum number of angle sequences which can be
         returned is `1 + after_success`.
+
+    max_retries (optional, 0): unsigned integer --
+        The number of additional retries allowed to fix semi-successful results
+        (i.e. ones which are valid mathematically but not physically).
 
     log (optional, None): nullable file --
         If not None, the colour sequences being tried will be logged to this
@@ -184,7 +210,8 @@ def search(target, before_success = 1, after_success = 0, log_file = None):
             return all_outs
         elif len(colours) != cur_len:
             cur_len = len(colours)
-        dct = try_colours(target, colours, before_success, after_success)
+        dct = try_colours(target, colours, before_success, after_success,
+                          max_retries)
         if len(dct) != 0:
             len_successes = len_successes + 1
             all_outs.append((colours, dct))
