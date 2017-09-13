@@ -17,6 +17,8 @@ state_specifier: (motional * ?internal * ?phase) --
             3.0 => -1.0 + 0.0i.
 """
 
+import numbers
+
 def motional(state):
     """Get the motional level from a state_specifier."""
     if isinstance(state, int) and state >= 0:
@@ -44,9 +46,9 @@ def internal(state):
 def phase(state):
     """Get the phase from a state_specifier as an angle (fraction of pi)."""
     try:
-        if isinstance(state[1], str) and isinstance(state[2], float):
+        if isinstance(state[1], str) and isinstance(state[2], numbers.Number):
             return state[2]
-        elif isinstance(state[1], float):
+        elif isinstance(state[1], numbers.Number):
             return state[1]
     except:
         pass
