@@ -171,3 +171,45 @@ def motional_states_needed(colours):
     pulse sequence, because it doesn't do anything.
     """
     return reduce(lambda acc, c: acc + {'c':0, 'r':1, 'b':1}[c], colours, 1)
+
+class ColourOperator(object):
+    def __init__(this, colour, ns):
+        this.op = np.zeros((2 * ns, 2 * ns), dtype = np.complex128)
+        this.d_op = np.zeros((2 * ns, 2 * ns), dtype = np.complex128)
+        this._updater = {
+            'c': generate_carrier_updater,
+            'r': generate_red_updater,
+            'b': generate_blue_updater }[colour](this.op)
+        this._d_updater = {
+            'c': generate_d_carrier_updater,
+            'r': generate_d_red_updater,
+            'b': generate_d_blue_updater }[colour](this.d_op)
+        this.colour = colour
+        this._angle = None
+
+    @property
+    def angle(this):
+        return this._angle
+    @angle.setter
+    def angle(this, new_angle):
+        if this._angle != new_angle:
+            this._angle = new_angle
+            this._updater(pi * this._angle)
+            this._d_updater(pi * this._angle)
+        return
+
+    def U(this, angle):
+        """ColourOperator().U(angle)
+
+        Set the angle in the ColourOperator, and then return a copy of the
+        operator matrix at that angle."""
+        this.angle = angle
+        return np.copy(this.op)
+
+    def d_U(this, angle):
+        """ColourOperator().d_U(angle)
+
+        Set the angle, then return a copy of the derivative of the operator
+        matrix at that angle."""
+        this.angle = angle
+        return np.copy(this.d_op)

@@ -34,30 +34,6 @@ def random_array(shape, lower = 0.0, upper = 1.0, **kwargs):
     rands = [ sr.uniform(lower, upper) for _ in xrange(length) ]
     return np.array(rands, **kwargs).reshape(shape)
 
-class ColourOperator(object):
-    def __init__(this, colour, ns):
-        this.op = np.zeros((2 * ns, 2 * ns), dtype = np.complex128)
-        this.d_op = np.zeros((2 * ns, 2 * ns), dtype = np.complex128)
-        this._updater = {
-            'c': generate_carrier_updater,
-            'r': generate_red_updater,
-            'b': generate_blue_updater }[colour](this.op)
-        this._d_updater = {
-            'c': generate_d_carrier_updater,
-            'r': generate_d_red_updater,
-            'b': generate_d_blue_updater }[colour](this.d_op)
-        this.colour = colour
-        this._angle = None
-
-    @property
-    def angle(this):
-        return this._angle
-    @angle.setter
-    def angle(this, new_angle):
-        this._angle = new_angle
-        this._updater(pi * this._angle)
-        this._d_updater(pi * this._angle)
-
 class PulseSequence(object):
     """
     Arguments:
