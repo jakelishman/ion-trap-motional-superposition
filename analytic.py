@@ -281,17 +281,9 @@ def _try_fixed(target_spec):
         counter -= 1
     assert False, "Failed to find the sequence."
 
-from itertools import *
-
 def _try(target_spec):
-    phases_seq = product([0.0, 0.5], repeat = len(target_spec) - 1)\
-                 if len(target_spec) > 1 else [[]]
-    phases_seq = imap(lambda tup: [0.0] + list(tup), phases_seq)
-    for phases in phases_seq:
-        for i in xrange(len(phases)):
-            target_spec[i] = state.set_phase(target_spec[i], phases[i])
-        try:
-            return _try_fixed(target_spec)
-        except:
-            pass
-    assert False, "fuck."
+    for i, t in enumerate(target_spec):
+        p = 0.0 if state.motional(t) % 2 == {'g':0, 'e':1}[state.internal(t)]\
+            else 0.5
+        target_spec[i] = state.set_phase(t, p)
+    return _try_fixed(target_spec)
