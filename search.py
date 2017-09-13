@@ -1,10 +1,31 @@
 from __future__ import print_function
 from pulse_sequence import PulseSequence, motional_states_needed
-from functional import *
 from itertools import *
 import numpy as np
 import math
 import random
+
+def pairs(lst):
+    """
+    Make pairs out a list, so
+        [1, 2, 3, 4, 5]
+    becomes
+        [(1, 2), (2, 3), (3, 4), (4, 5)].
+    """
+    if len(lst) <= 1:
+        return []
+    prev = lst[0]
+    out = []
+    for el in lst[1:]:
+        out.append((prev, el))
+        prev = el
+    return out
+
+def exists(predicate, iterable):
+    for element in iterable:
+        if predicate(element):
+            return True
+    return False
 
 def colour_sequences(target):
     """
@@ -28,7 +49,7 @@ def colour_sequences(target):
             motional_states_needed(colours) == max_n + 1,
             # Last pulse mustn't be blue (implied by previous test).
             colours[0] is not 'b' ]
-        return not False in tests
+        return all(tests)
     def possibles(ncols):
         """
         An iterator through all the pulse sequences of length `n`.  Pulses which
