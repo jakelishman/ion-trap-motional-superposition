@@ -22,12 +22,14 @@ from itertools import chain
 from functools import reduce
 from random import SystemRandom
 import math
-import state_specifier as state
-import pulse_matrices as pm
+import ion_superpositions.state_specifier as state
+import ion_superpositions.pulse_matrices as pm
 import numpy as np
 import scipy.optimize
 
-def random_array(shape, lower=0.0, upper=1.0, **kwargs):
+__all__ = ['PulseSequence']
+
+def _random_array(shape, lower=0.0, upper=1.0, **kwargs):
     """random_array(shape, lower=0.0, upper=1.0, **kwargs) -> array
 
     Return a np.array of `shape` with the elements filled with uniform random
@@ -84,56 +86,56 @@ class PulseSequence(object):
             "You must have at least one colour in the sequence!"
         start = start if start is not None else [(0, 'g', 0.0)]
         self.colours = colours
-        self._len = len(self.colours)
-        self._n_phases = len(target) - 1 if target is not None else None
-        self._ns = max(pm.motional_states_needed(colours),
-                       max(list(map(state.motional, start))) + 1,
-                       max(list(map(state.motional, target))) + 1\
-                       if target is not None else 0)
-        self.fixed_phase = fixed_phase or self._n_phases is 0
-        self._orig_target = target
-        self._target = pm.build_state_vector(target, self._ns)\
-                       if target is not None else None
-        self._start = pm.build_state_vector(start, self._ns)
-        self._lin_ops =\
-            np.array([pm.ColourOperator(c, self._ns) for c in self.colours])
+        self.__len = len(self.colours)
+        self.__n_phases = len(target) - 1 if target is not None else None
+        self.ns = max(pm.motional_states_needed(colours),
+                        max(list(map(state.motional, start))) + 1,
+                        max(list(map(state.motional, target))) + 1\
+                        if target is not None else 0)
+        self.fixed_phase = fixed_phase or self.__n_phases is 0
+        self.target = target
+        self.__target = pm.build_state_vector(target, self.ns)\
+                        if target is not None else None
+        self.start = pm.build_state_vector(start, self.ns)
+        self.__lin_ops =\
+            np.array([pm.ColourOperator(c, self.ns) for c in self.colours])
         # The angles are for every colour in the sequence, read in left-to-right
         # order.  The angles are all divided by pi.
-        self._angles = None
+        self.__angles = None
         # The stored phases are for every element of the target except the
         # first.  The first is always taken to be 0, and the others are rotated
         # so that self is true (if a first phase is supplied).  The phases are
         # stored as angles, divided by pi (e.g. 0 => 1, 0.5 => i, 1 => -1 etc).
-        self._phases = None
+        self.__phases = None
 
         # Output storage.
-        self._u = np.empty((2 * self._ns, 2 * self._ns), dtype=np.complex128)
-        self._d_u = np.empty((self._len, 2 * self._ns, 2 * self._ns),
-                             dtype=np.complex128)
+        self.__u = np.empty((2 * self.ns, 2 * self.ns), dtype=np.complex128)
+        self.__d_u = np.empty((self.__len, 2 * self.ns, 2 * self.ns),
+                              dtype=np.complex128)
         if target is not None:
             # self shouldn't be a np.array because it needs to be able to hold
             # state_specifier tuples which are variable length.
-            self._new_target = [0 for _ in self._orig_target]
-            self._dist = float("inf")
-            self._d_dist_angles = np.empty(self._len, dtype=np.float64)
-            self._d_dist_phases = np.empty(len(target) - 1, dtype=np.float64)
+            self.__new_target = [0 for _ in self.target]
+            self.__dist = float("inf")
+            self.__d_dist_angles = np.empty(self.__len, dtype=np.float64)
+            self.__d_dist_phases = np.empty(len(target) - 1, dtype=np.float64)
 
         # Pre-allocate calculation scratch space and fixed variables.
-        self._id = np.identity(2 * self._ns, dtype=np.complex128)
-        self._partials_ltr = np.empty_like(self._d_u)
-        self._partials_rtl = np.empty_like(self._d_u)
-        self._partials_ltr[0] = self._id
-        self._partials_rtl[0] = self._id
-        self._temp = np.empty_like(self._u)
-        self._tus = 0.0j
+        self.__id = np.identity(2 * self.ns, dtype=np.complex128)
+        self.__partials_ltr = np.empty_like(self.__d_u)
+        self.__partials_rtl = np.empty_like(self.__d_u)
+        self.__partials_ltr[0] = self.__id
+        self.__partials_rtl[0] = self.__id
+        self.__temp = np.empty_like(self.__u)
+        self.__tus = 0.0j
 
-    def _update_target_phases(self):
-        self._new_target[0] = state.set_phase(self._orig_target[0], 0)
-        for i, el in enumerate(self._orig_target[1:]):
-            self._new_target[i + 1] = state.set_phase(el, self._phases[i])
-        self._target = pm.build_state_vector(self._new_target, self._ns)
+    def __update_target_phases(self):
+        self.__new_target[0] = state.set_phase(self.target[0], 0)
+        for i, el in enumerate(self.target[1:]):
+            self.__new_target[i + 1] = state.set_phase(el, self.__phases[i])
+        self.__target = pm.build_state_vector(self.__new_target, self.ns)
 
-    def _update_propagator_and_derivatives(self):
+    def __update_propagator_and_derivatives(self):
         """
         Efficient method of calculating the complete propagator, and all the
         derivatives associated with it.
@@ -163,111 +165,111 @@ class PulseSequence(object):
             A list of the derivatives of the propagator at the specified angles,
             with respect to each of the given angles in turn.
         """
-        for i in range(self._len - 1):
-            np.dot(self._partials_ltr[i], self._lin_ops[i].op,
-                   out=self._partials_ltr[i + 1])
-            np.dot(self._lin_ops[-(i + 1)].op, self._partials_rtl[i],
-                   out=self._partials_rtl[i + 1])
+        for i in range(self.__len - 1):
+            np.dot(self.__partials_ltr[i], self.__lin_ops[i].op,
+                   out=self.__partials_ltr[i + 1])
+            np.dot(self.__lin_ops[-(i + 1)].op, self.__partials_rtl[i],
+                   out=self.__partials_rtl[i + 1])
 
-        np.dot(self._partials_ltr[-1], self._lin_ops[-1].op, out=self._u)
-        for i in range(self._len):
-            np.dot(self._partials_ltr[i], self._lin_ops[i].d_op,
-                   out=self._temp)
-            np.dot(self._temp, self._partials_rtl[-(i + 1)], out=self._d_u[i])
+        np.dot(self.__partials_ltr[-1], self.__lin_ops[-1].op, out=self.__u)
+        for i in range(self.__len):
+            np.dot(self.__partials_ltr[i], self.__lin_ops[i].d_op,
+                   out=self.__temp)
+            np.dot(self.__temp, self.__partials_rtl[-(i + 1)], out=self.__d_u[i])
 
-    def _update_distance(self):
-        self._tus = pm.inner_product(self._target, self._u, self._start)
-        self._dist = 1.0 - (self._tus * np.conj(self._tus)).real
+    def __update_distance(self):
+        self.__tus = pm.inner_product(self.__target, self.__u, self.start)
+        self.__dist = 1.0 - (self.__tus * np.conj(self.__tus)).real
 
-    def _update_distance_angle_derivatives(self):
-        for i in range(self._len):
-            prod = pm.inner_product(self._target, self._d_u[i], self._start)
-            self._d_dist_angles[i] = -2.0 * (np.conj(self._tus) * prod).real
+    def __update_distance_angle_derivatives(self):
+        for i in range(self.__len):
+            prod = pm.inner_product(self.__target, self.__d_u[i], self.start)
+            self.__d_dist_angles[i] = -2.0 * (np.conj(self.__tus) * prod).real
 
-    def _update_distance_phase_derivatives(self):
-        pref = 2.0 / math.sqrt(len(self._orig_target))
-        u_start = np.dot(self._u, self._start)
-        for i, pre_phase in enumerate(self._phases):
+    def __update_distance_phase_derivatives(self):
+        pref = 2.0 / math.sqrt(len(self.target))
+        u_start = np.dot(self.__u, self.start)
+        for i, pre_phase in enumerate(self.__phases):
             phase = cexp(1.0j * math.pi * (0.5 - pre_phase))
             # we can calculate the inner product <g n_j|U|start> by
             # precalculating U|start>, then indexing to the relevant element.
-            idx = state.idx(self._orig_target[i + 1], self._ns)
-            self._d_dist_phases[i] =\
-                pref * (phase * u_start[idx] * np.conj(self._tus)).real
+            idx = state.idx(self.target[i + 1], self.ns)
+            self.__d_dist_phases[i] =\
+                pref * (phase * u_start[idx] * np.conj(self.__tus)).real
 
-    def _update_angles_if_required(self, angles):
+    def __update_angles_if_required(self, angles):
         if angles is None:
             return False
-        assert len(angles) == self._len,\
+        assert len(angles) == self.__len,\
             "There are {} colours in the sequence, but I got {} angles."\
-            .format(self._len, len(angles))
-        if np.array_equal(self._angles, angles):
+            .format(self.__len, len(angles))
+        if np.array_equal(self.__angles, angles):
             return False
-        self._angles = angles
-        for i in range(len(self._angles)):
-            self._lin_ops[i].angle = self._angles[i]
+        self.__angles = angles
+        for i in range(len(self.__angles)):
+            self.__lin_ops[i].angle = self.__angles[i]
         return True
 
-    def _update_phases_if_required(self, phases):
+    def __update_phases_if_required(self, phases):
         if self.fixed_phase\
            or phases is None\
-           or np.array_equal(self._phases, phases):
+           or np.array_equal(self.__phases, phases):
             return False
-        assert 0 <= len(self._orig_target) - len(phases) <= 1,\
+        assert 0 <= len(self.target) - len(phases) <= 1,\
             "There are {} elements of the target, but I got {} phases."\
-            .format(len(self._orig_target), len(phases))
-        if len(phases) == len(self._orig_target) - 1:
-            self._phases = phases
+            .format(len(self.target), len(phases))
+        if len(phases) == len(self.target) - 1:
+            self.__phases = phases
         else:
-            self._phases = np.vectorize(lambda x: x - phases[0])(phases[1:])
-        self._update_target_phases()
+            self.__phases = np.vectorize(lambda x: x - phases[0])(phases[1:])
+        self.__update_target_phases()
         return True
 
-    def _calculate_propagator(self, angles):
-        if self._update_angles_if_required(angles):
-            self._update_propagator_and_derivatives()
+    def __calculate_propagator(self, angles):
+        if self.__update_angles_if_required(angles):
+            self.__update_propagator_and_derivatives()
 
-    def _calculate_all(self, angles, phases=None):
-        assert self._target is None or self.fixed_phase or phases is not None,\
+    def __calculate_all(self, angles, phases=None):
+        assert self.__target is None or self.fixed_phase or phases is not None,\
             "If you're not in fixed phase mode, you need to specify the phases."
-        updated_angles = self._update_angles_if_required(angles)
-        updated_phases = self._update_phases_if_required(phases)
+        updated_angles = self.__update_angles_if_required(angles)
+        updated_phases = self.__update_phases_if_required(phases)
         if not (updated_angles or updated_phases):
             return
         if updated_angles:
-            self._update_propagator_and_derivatives()
-        if self._target is not None:
-            self._update_distance()
+            self.__update_propagator_and_derivatives()
+        if self.__target is not None:
+            self.__update_distance()
             if updated_angles:
-                self._update_distance_angle_derivatives()
+                self.__update_distance_angle_derivatives()
             if updated_phases:
-                self._update_distance_phase_derivatives()
+                self.__update_distance_phase_derivatives()
 
     def U(self, angles):
         """
         Get the propagator of the pulse sequence stored in the class with the
         specified angles.
         """
-        self._calculate_propagator(angles)
-        return np.copy(self._u)
+        self.__calculate_propagator(angles)
+        return np.copy(self.__u)
 
     def d_U(self, angles):
         """
         Get the derivatives of the propagator of the pulse sequence stored in
         the class with the specified angles.
         """
-        self._calculate_propagator(angles)
-        return np.copy(self._d_u)
+        self.__calculate_propagator(angles)
+        return np.copy(self.__d_u)
 
     def distance(self, angles, phases=None):
         """
         Get the distance of the pulse sequence stored in the class with the
         specified angles.
         """
-        assert self._target is not None,\
+        assert self.__target is not None,\
             "You must set the target state to calculate the distance."
-        self._calculate_all(angles, phases)
-        return self._dist
+        self.__calculate_all(angles, phases)
+        return self.__dist
 
     def d_distance(self, angles, phases=None):
         """
@@ -281,27 +283,27 @@ class PulseSequence(object):
         target were given, excluding the first element of the target, which is
         assumed to maintain a phase of 1.
         """
-        assert self._target is not None,\
+        assert self.__target is not None,\
             "You must set the target state to calculate the distance."
         assert self.fixed_phase or phases is not None,\
             "If you're not in fixed phase mode, you need to specify the phases."
-        self._calculate_all(angles, phases)
+        self.__calculate_all(angles, phases)
         if self.fixed_phase:
-            return np.copy(self._d_dist_angles)
-        return np.copy(self._d_dist_angles), np.copy(self._d_dist_phases)
+            return np.copy(self.__d_dist_angles)
+        return np.copy(self.__d_dist_angles), np.copy(self.__d_dist_phases)
 
     def optimise(self, initial_angles=None, initial_phases=None, **kwargs):
         """optimise(initial_angles=None, initial_phases=None, **kwargs)"""
-        assert self._target is not None,\
+        assert self.__target is not None,\
             "You must set the target state to optimise a pulse sequence."
-        angles = random_array(self._len, dtype=np.float64)\
+        angles = _random_array(self.__len, dtype=np.float64)\
                  if initial_angles is None else initial_angles
         if not self.fixed_phase:
-            phases = random_array(self._n_phases, dtype=np.float64)\
+            phases = _random_array(self.__n_phases, dtype=np.float64)\
                      if initial_phases is None else initial_phases
-            assert len(phases) == self._n_phases
+            assert len(phases) == self.__n_phases
             def _split(f):
-                return lambda xs: f(xs[:-self._n_phases], xs[-self._n_phases:])
+                return lambda x: f(x[:-self.__n_phases], x[-self.__n_phases:])
             target_f = _split(self.distance)
             jacobian = lambda xs: np.concatenate(_split(self.d_distance)(xs))
             inits = np.concatenate((angles, phases))
@@ -316,12 +318,12 @@ class PulseSequence(object):
         """split_result(opt_res) -> angles, phases"""
         if self.fixed_phase:
             return opt_res.x, np.zeros(1, dtype=np.float64)
-        return opt_res.x[:-self._n_phases],\
-               np.insert(opt_res.x[-self._n_phases:], 0, 0.0)
+        return opt_res.x[:-self.__n_phases],\
+               np.insert(opt_res.x[-self.__n_phases:], 0, 0.0)
 
-    def _print_trace(self, trace_out, n_digits=5):
-        _transpose = lambda arr: map(list, np.transpose(list(map(list, arr))))
-        _reorder_ind = lambda arr: map(reversed, _transpose(map(reversed, arr)))
+    def __print_trace(self, trace_out, n_digits=5):
+        _transpose = lambda x: map(list, np.transpose(list(map(list, x))))
+        _reorder_ind = lambda x: map(reversed, _transpose(map(reversed, x)))
         _colour_str = lambda cop: "{}({})".format(cop.colour,
                                                   round(cop.angle, n_digits))
         def _normalise_string_lengths(lst):
@@ -341,9 +343,9 @@ class PulseSequence(object):
             str_cols[i] = col + ["|e>" if i % 2 is 0 else "|g>"]
         str_cols = map(_normalise_string_lengths, str_cols)
         str_cols = _reorder_ind(str_cols)
-        colour_strings = list(map(_colour_str, self._lin_ops)) + ["start"]
+        colour_strings = list(map(_colour_str, self.__lin_ops)) + ["start"]
         str_cols = _transpose([colour_strings] + _group_pulses(str_cols))
-        motionals = ["|{}>".format(i) for i in range(self._ns - 1, -1, -1)]
+        motionals = ["|{}>".format(i) for i in range(self.ns - 1, -1, -1)]
         str_cols = [["", ""] + motionals] + list(str_cols)
         for line in _transpose(map(_normalise_string_lengths, str_cols)):
             print("  |  ".join(line))
@@ -358,12 +360,12 @@ class PulseSequence(object):
         angles will be traced instead.  self is useful for tracing the immediate
         output of an optimise call.
         """
-        self._update_angles_if_required(angles)
-        out = np.empty((self._len + 1, 2 * self._ns), dtype=np.complex128)
-        out[0] = self._start
-        for i in range(self._len):
-            out[i + 1] = np.dot(self._lin_ops[self._len - i - 1].op, out[i])
+        self.__update_angles_if_required(angles)
+        out = np.empty((self.__len + 1, 2 * self.ns), dtype=np.complex128)
+        out[0] = self.start
+        for i in range(self.__len):
+            out[i + 1] = np.dot(self.__lin_ops[self.__len - i - 1].op, out[i])
         if not fmt:
             return out
         else:
-            self._print_trace(out)
+            self.__print_trace(out)

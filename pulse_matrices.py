@@ -1,7 +1,7 @@
 from math import cos, sin, sqrt, pi
 from cmath import exp as cexp
 from functools import reduce
-import state_specifier as state
+import ion_superpositions.state_specifier as state
 import numpy as np
 
 def adj(arr):
@@ -165,52 +165,52 @@ def motional_states_needed(colours):
     us to consider a new motional mode, but the carrier just transitions between
     existing ones.
 
-    This function can overestimate for some pulse sequences, but those are ones
+    self function can overestimate for some pulse sequences, but those are ones
     which have a ['r', 'r'] or similar, which ought to be described by a single
     'r' of different length.  Also, a pulse sequence starting with 'r' and in
-    the |g0> state will consider one too many states, but this is also a silly
+    the |g0> state will consider one too many states, but self is also a silly
     pulse sequence, because it doesn't do anything.
     """
     return reduce(lambda acc, c: acc + {'c':0, 'r':1, 'b':1}[c], colours, 1)
 
 class ColourOperator(object):
-    def __init__(this, colour, ns):
-        this.op = np.zeros((2 * ns, 2 * ns), dtype = np.complex128)
-        this.d_op = np.zeros((2 * ns, 2 * ns), dtype = np.complex128)
-        this._updater = {
+    def __init__(self, colour, ns):
+        self.op = np.zeros((2 * ns, 2 * ns), dtype = np.complex128)
+        self.d_op = np.zeros((2 * ns, 2 * ns), dtype = np.complex128)
+        self.__updater = {
             'c': generate_carrier_updater,
             'r': generate_red_updater,
-            'b': generate_blue_updater }[colour](this.op)
-        this._d_updater = {
+            'b': generate_blue_updater }[colour](self.op)
+        self.__d_updater = {
             'c': generate_d_carrier_updater,
             'r': generate_d_red_updater,
-            'b': generate_d_blue_updater }[colour](this.d_op)
-        this.colour = colour
-        this._angle = None
+            'b': generate_d_blue_updater }[colour](self.d_op)
+        self.colour = colour
+        self.__angle = None
 
     @property
-    def angle(this):
-        return this._angle
+    def angle(self):
+        return self.__angle
     @angle.setter
-    def angle(this, new_angle):
-        if this._angle != new_angle:
-            this._angle = new_angle
-            this._updater(pi * this._angle)
-            this._d_updater(pi * this._angle)
+    def angle(self, new_angle):
+        if self.__angle != new_angle:
+            self.__angle = new_angle
+            self.__updater(pi * self.__angle)
+            self.__d_updater(pi * self.__angle)
         return
 
-    def U(this, angle):
+    def U(self, angle):
         """ColourOperator().U(angle)
 
         Set the angle in the ColourOperator, and then return a copy of the
         operator matrix at that angle."""
-        this.angle = angle
-        return np.copy(this.op)
+        self.angle = angle
+        return np.copy(self.op)
 
-    def d_U(this, angle):
+    def d_U(self, angle):
         """ColourOperator().d_U(angle)
 
         Set the angle, then return a copy of the derivative of the operator
         matrix at that angle."""
-        this.angle = angle
-        return np.copy(this.d_op)
+        self.angle = angle
+        return np.copy(self.d_op)

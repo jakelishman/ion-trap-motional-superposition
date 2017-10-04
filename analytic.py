@@ -1,10 +1,10 @@
-from pulse_matrices import ColourOperator, build_state_vector
-from math import *
+from .pulse_matrices import ColourOperator, build_state_vector
+import ion_superpositions.state_specifier as ss
+from math import sin, cos, pi, atan, sqrt, fmod
 from numpy import angle as arg
 from operator import xor
 import itertools as it
 import numpy as np
-import state_specifier as ss
 
 class Tree(object):
     pass
@@ -23,12 +23,12 @@ class Branch(Tree):
         this.gtree = gtree
         this.etree = etree
 
-def bound_angle(angle):
+def _bound_angle(angle):
     """Get the angle (divided by pi) bounded on (-1, 1]."""
     out = fmod(angle, 2.0)
     return out if -1.0 < out <= 1.0 else out - np.sign(out) * 2.0
 
-def feq(a, b):
+def _feq(a, b):
     """Compare two floats for near equality."""
     return abs(a - b) < 1e-8
 
@@ -59,8 +59,8 @@ def other_coupled_element(colour, element):
     else:
         return (_mot + 1, _o_int)
 
-def phase_neg(colour, into, out_of, into_is_ground):
-    """phase_neg(colour, into, out_of, into_is_ground) -> neg
+def _phase_neg(colour, into, out_of, into_is_ground):
+    """_phase_neg(colour, into, out_of, into_is_ground) -> neg
 
     Return a Boolean saying whether there is a relative negative sign due to the
     phase difference between the two states.
@@ -89,11 +89,11 @@ def phase_neg(colour, into, out_of, into_is_ground):
     Notes:
         If one of the coefficients is 0, then this function always returns
         False, even though both True and False are valid return values."""
-    if feq(abs(into), 0.0) or feq(abs(out_of), 0.0):
+    if _feq(abs(into), 0.0) or _feq(abs(out_of), 0.0):
         return False
-    delta = bound_angle((arg(into) - arg(out_of)) / pi)
+    delta = _bound_angle((arg(into) - arg(out_of)) / pi)
     allowed_deltas = [-0.5, 0.5] if colour is 'c' else [-1.0, 0.0, 1.0]
-    if not any([feq(delta, x) for x in allowed_deltas]):
+    if not any([_feq(delta, x) for x in allowed_deltas]):
         raise ValueError(
             "The {} pulse needs a phase difference as one of {}, "
             "but I got {} and {} which is a difference of {}."\
@@ -101,12 +101,12 @@ def phase_neg(colour, into, out_of, into_is_ground):
                         allowed_deltas,
                         arg(into) / pi, arg(out_of) / pi, delta))
     if colour is 'c':
-        return feq(delta, -0.5)
+        return _feq(delta, -0.5)
     else:
-        return into_is_ground != feq(delta, 0.0)
+        return into_is_ground != _feq(delta, 0.0)
 
-def single_pulse(colour, target, state_vector, adjoint = True):
-    """single_pulse(colour, target, state_vector, adjoint = True)
+def _single_pulse(colour, target, state_vector, adjoint = True):
+    """_single_pulse(colour, target, state_vector, adjoint = True)
     -> angle
 
     Choose an angle for a pulse of `colour` which moves all the population of
@@ -142,9 +142,10 @@ def single_pulse(colour, target, state_vector, adjoint = True):
     out_of = state_vector[ss.idx(other, ns)]
     k = 1.0 if colour is 'c'\
         else 1.0 / sqrt(max(list(map(ss.motional, (target, other)))))
-    if feq(abs(out_of), 0.0):
+    if _feq(abs(out_of), 0.0):
         return k
-    neg = adjoint != phase_neg(colour, into, out_of, ss.internal(target) is 'g')
+    neg = xor(adjoint,
+              _phase_neg(colour, into, out_of, ss.internal(target) is 'g'))
     neg = -1.0 if neg else 1.0
     pop = sqrt(abs(into) ** 2 + abs(out_of) ** 2)
     return 2.0 * k * atan((neg * abs(into) + pop) / abs(out_of)) / pi
@@ -154,7 +155,7 @@ def is_populated(element, state_vector):
 
     Determine if the `element` (`state_specifier`) has non-zero probability."""
     ns = state_vector.shape[0] // 2
-    return not feq(abs(state_vector[ss.idx(element, ns)]) ** 2, 0.0)
+    return not _feq(abs(state_vector[ss.idx(element, ns)]) ** 2, 0.0)
 
 def both_populated(motional, state_vector):
     """both_populated(motional, state_vector) -> bool
@@ -179,7 +180,7 @@ def chequerboard_phases(target_spec, pi_phases = None):
     for i, t in enumerate(target_spec):
         p = 0.0 if ss.motional(t) % 2 == {'g':0, 'e':1}[ss.internal(t)]\
             else 0.5
-        target_spec[i] = ss.set_phase(t, bound_angle(p + pi_phases[i]))
+        target_spec[i] = ss.set_phase(t, _bound_angle(p + pi_phases[i]))
     return target_spec
 
 def build_tree(target_spec):
@@ -190,7 +191,7 @@ def build_tree(target_spec):
            'b': ColourOperator('b', max_n + 1)}
     def _tree(pulses, state, max_n):
         def nexts(colour, target):
-            angle = single_pulse(colour, target, state, adjoint = True)
+            angle = _single_pulse(colour, target, state, adjoint = True)
             new_pulses = pulses + [(colour, angle)]
             new_state = np.dot(ops[colour].U(-angle), state)
             new_max_n = max_n if colour is 'c' else max_n - 1
@@ -258,7 +259,7 @@ def find_pulses(target_spec):
             op, target = blue, (max_n - 1, 'g')
         else: # is_populated((max_n, 'g'), current_state)
             op, target = red, (max_n - 1, 'e')
-        angle = single_pulse(op.colour, target, current_state, adjoint = True)
+        angle = _single_pulse(op.colour, target, current_state, adjoint = True)
         pulses.append((op.colour, angle))
         current_state = np.dot(op.U(-angle), current_state)
         max_n = max_n if op is carrier else max_n - 1
