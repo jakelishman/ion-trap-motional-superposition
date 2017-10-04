@@ -93,7 +93,7 @@ def phase_neg(colour, into, out_of, into_is_ground):
         return False
     delta = bound_angle((arg(into) - arg(out_of)) / pi)
     allowed_deltas = [-0.5, 0.5] if colour is 'c' else [-1.0, 0.0, 1.0]
-    if not any(map(lambda x: feq(delta, x), allowed_deltas)):
+    if not any([feq(delta, x) for x in allowed_deltas]):
         raise ValueError(
             "The {} pulse needs a phase difference as one of {}, "
             "but I got {} and {} which is a difference of {}."\
@@ -141,7 +141,7 @@ def single_pulse(colour, target, state_vector, adjoint = True):
     into = state_vector[ss.idx(target, ns)]
     out_of = state_vector[ss.idx(other, ns)]
     k = 1.0 if colour is 'c'\
-        else 1.0 / sqrt(max(map(ss.motional, (target, other))))
+        else 1.0 / sqrt(max(list(map(ss.motional, (target, other)))))
     if feq(abs(out_of), 0.0):
         return k
     neg = adjoint != phase_neg(colour, into, out_of, ss.internal(target) is 'g')
@@ -170,7 +170,7 @@ def chequerboard_phases(target_spec, pi_phases = None):
     Apply the phase chequerboard to the targets specified so that a pulse
     sequence to evolve to it will exist."""
     if pi_phases is None:
-        pi_phases = [ 0.0 for _ in xrange(len(target_spec) - 1) ]
+        pi_phases = [ 0.0 for _ in range(len(target_spec) - 1) ]
     else:
         pi_phases = list(pi_phases)
     assert len(pi_phases) == len(target_spec) - 1,\
@@ -183,7 +183,7 @@ def chequerboard_phases(target_spec, pi_phases = None):
     return target_spec
 
 def build_tree(target_spec):
-    max_n = max(map(ss.motional, target_spec))
+    max_n = max(list(map(ss.motional, target_spec)))
     current_state = build_state_vector(target_spec, max_n + 1)
     ops = {'c': ColourOperator('c', max_n + 1),
            'r': ColourOperator('r', max_n + 1),
@@ -221,7 +221,7 @@ def find_all_pulses(target_spec):
         target = chequerboard_phases(target_spec, pi_phases)
         return list(target), list(extract_pulses(build_tree(target)))
     all_pi_phases = it.product([0.0, 1.0], repeat = len(target_spec) - 1)
-    return list(it.imap(mapping, all_pi_phases))
+    return list(map(mapping, all_pi_phases))
 
 def find_pulses(target_spec):
     """find_pulses(target_spec) -> pulses
@@ -243,11 +243,11 @@ def find_pulses(target_spec):
         of these imply logic errors in the underlying code and cannot be
         recovered from."""
     target_spec = chequerboard_phases(target_spec)
-    max_n = max(map(ss.motional, target_spec))
+    max_n = max(list(map(ss.motional, target_spec)))
     current_state = build_state_vector(target_spec, max_n + 1)
-    carrier, red, blue = tuple(map(lambda x: ColourOperator(x, max_n+1), "crb"))
+    carrier, red, blue = tuple([ColourOperator(x, max_n+1) for x in "crb"])
     pulses = []
-    for _ in xrange(2 * max_n + 2, 0, -1):
+    for _ in range(2 * max_n + 2, 0, -1):
         if max_n == 0 and not is_populated((0, 'e'), current_state):
             return pulses
         elif max_n == 0:

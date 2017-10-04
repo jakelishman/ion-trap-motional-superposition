@@ -1,7 +1,8 @@
-import numpy as np
-from math import *
+from math import cos, sin, sqrt, pi
 from cmath import exp as cexp
+from functools import reduce
 import state_specifier as state
+import numpy as np
 
 def adj(arr):
     """Adjoint of a matrix."""
@@ -64,14 +65,14 @@ def generate_red_updater(matrix):
     ns = dim // 2
     phase_indx = np.diag_indices(dim)
     trans_indx = ladder_transition_indices(dim, -1)
-    root = [ sqrt(n) for n in xrange(ns + 1) ]
+    root = [ sqrt(n) for n in range(ns + 1) ]
     def update_red(angle):
         """Update the 3 relevant diagonals in the closed-over matrix with a new
         angle, representing the 1st red transition."""
         matrix[phase_indx] = [ cos(root[n + z] * angle)
-                               for z in (1, 0) for n in xrange(ns) ]
+                               for z in (1, 0) for n in range(ns) ]
         matrix[trans_indx] = [ z * sin(root[n] * angle)
-                               for z in (1, -1) for n in xrange(1, ns) ]
+                               for z in (1, -1) for n in range(1, ns) ]
     return update_red
 
 def generate_d_red_updater(matrix):
@@ -83,14 +84,14 @@ def generate_d_red_updater(matrix):
     ns = dim // 2
     phase_indx = np.diag_indices(dim)
     trans_indx = ladder_transition_indices(dim, -1)
-    root = [ sqrt(n) for n in xrange(ns + 1) ]
+    root = [ sqrt(n) for n in range(ns + 1) ]
     def update_d_red(angle):
         """Update the 3 relevant diagonals in the closed-over matrix with a new
         angle, representing the derivative of the 1st red transition."""
         matrix[phase_indx] = [ -root[n + z] * sin(root[n + z] * angle)
-                               for z in (1, 0) for n in xrange(ns) ]
+                               for z in (1, 0) for n in range(ns) ]
         matrix[trans_indx] = [ z * root[n] * cos(root[n] * angle)
-                               for z in (1, -1) for n in xrange(1, ns) ]
+                               for z in (1, -1) for n in range(1, ns) ]
     return update_d_red
 
 def generate_blue_updater(matrix):
@@ -102,14 +103,14 @@ def generate_blue_updater(matrix):
     ns = dim // 2
     phase_indx = np.diag_indices(dim)
     trans_indx = ladder_transition_indices(dim, 1)
-    root = [ sqrt(n) for n in xrange(ns + 1) ]
+    root = [ sqrt(n) for n in range(ns + 1) ]
     def update_blue(angle):
         """Update the 3 relevant diagonals in the closed-over matrix with a new
         angle, representing the 1st blue transition."""
         matrix[phase_indx] = [ cos(root[n + z] * angle)
-                               for z in (0, 1) for n in xrange(ns) ]
+                               for z in (0, 1) for n in range(ns) ]
         matrix[trans_indx] = [ z * sin(root[n] * angle)
-                               for z in (1, -1) for n in xrange(1, ns) ]
+                               for z in (1, -1) for n in range(1, ns) ]
     return update_blue
 
 def generate_d_blue_updater(matrix):
@@ -121,14 +122,14 @@ def generate_d_blue_updater(matrix):
     ns = dim // 2
     phase_indx = np.diag_indices(dim)
     trans_indx = ladder_transition_indices(dim, 1)
-    root = [ sqrt(n) for n in xrange(ns + 1) ]
+    root = [ sqrt(n) for n in range(ns + 1) ]
     def update_d_blue(angle):
         """Update the 3 relevant diagonals in the closed-over matrix with a new
         angle, representing the derivative of the 1st blue transition."""
         matrix[phase_indx] = [ -root[n + z] * sin(root[n + z] * angle)
-                               for z in (0, 1) for n in xrange(ns) ]
+                               for z in (0, 1) for n in range(ns) ]
         matrix[trans_indx] = [ z * root[n] * cos(root[n] * angle)
-                               for z in (1, -1) for n in xrange(1, ns) ]
+                               for z in (1, -1) for n in range(1, ns) ]
     return update_d_blue
 
 def build_state_vector(populated, ns):
