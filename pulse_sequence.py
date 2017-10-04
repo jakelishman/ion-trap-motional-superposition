@@ -80,7 +80,7 @@ class PulseSequence(object):
         `(|g0> + i|e2> + |g3>)/sqrt(3)`.
     """
     def __init__(self, colours, target=None, fixed_phase=False, start=None):
-        assert colours,\
+        assert len(colours) > 0,\
             "You must have at least one colour in the sequence!"
         start = start if start is not None else [(0, 'g', 0.0)]
         self.colours = colours
