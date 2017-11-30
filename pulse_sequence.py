@@ -113,8 +113,8 @@ class PulseSequence(object):
         self.__d_u = np.empty((self.__len, 2 * self.ns, 2 * self.ns),
                               dtype=np.complex128)
         if target is not None:
-            # self shouldn't be a np.array because it needs to be able to hold
-            # state_specifier tuples which are variable length.
+            # __new_target shouldn't be a np.array because it needs to be able
+            # to hold state_specifier tuples which are variable length.
             self.__new_target = [0 for _ in self.target]
             self.__dist = float("inf")
             self.__d_dist_angles = np.empty(self.__len, dtype=np.float64)
